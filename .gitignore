@@ -7,3 +7,5 @@
 .DS_Store
 *.class
 *.jar
+.idea
+.idea_modules
