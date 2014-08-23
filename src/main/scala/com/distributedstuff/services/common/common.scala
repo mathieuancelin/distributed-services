@@ -94,7 +94,7 @@ object Logger extends LoggerLike {
   def apply[T](clazz: Class[T]): LoggerLike = new Logger(LoggerFactory.getLogger(clazz))
 
   def configure(): LoggerLike = {
-    /*{
+    {
       import java.util.logging._
       Option(java.util.logging.Logger.getLogger("")).map { root =>
         root.setLevel(java.util.logging.Level.FINEST)
@@ -134,8 +134,7 @@ object Logger extends LoggerLike {
         case NonFatal(_) =>
       }
       this
-    }*/
-    this
+    }
   }
 }
 

@@ -7,7 +7,6 @@
     </encoder>
   </appender>
   
-  <logger name="com.ning.http" level="INFO" />
   <logger name="InternalServices" level="INFO" />
   <logger name="StateManagerActor" level="INFO" />
 

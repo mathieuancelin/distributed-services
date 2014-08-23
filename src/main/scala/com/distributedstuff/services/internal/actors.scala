@@ -24,10 +24,8 @@ private[services] class StateManagerActor(is: ServiceDirectory) extends Actor {
       Logger("StateManagerActor").trace(s"asking $from its state ...")
       is.askState(from).andThen {
         case Success(state) => {
-          if (!is.globalState.containsKey(from)) {
-            is.globalState.putIfAbsent(is.cluster.selfAddress, new util.HashSet[Service]())
-          }
-          is.globalState.get(is.cluster.selfAddress).addAll(state)
+          is.globalState.put(from, new util.HashSet[Service]())
+          is.globalState.get(from).addAll(state)
         }
         case Failure(e) =>
       }

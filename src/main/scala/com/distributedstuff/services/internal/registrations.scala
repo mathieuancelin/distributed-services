@@ -8,8 +8,11 @@ class ServiceRegistration(is: ServiceDirectory, service: Service) extends Regist
   def unregister() = {
     import collection.JavaConversions._
     for (e <- is.globalState.entrySet()) {
-      if (e.getValue.contains(service)) e.getValue.remove(service)
+      if (e.getValue.contains(service)) {
+        e.getValue.remove(service)
+      }
     }
+    is.askEveryoneButMe()
     is.tellEveryoneToAskMe()
     //// TODO : tell listeners that service is gone
   }

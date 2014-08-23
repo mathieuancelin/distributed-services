@@ -75,9 +75,9 @@ class ClientUsageSpec extends Specification with Tags {
     val server2 = Reference[HttpServer](createWebserver(9001, counter2))
     val server3 = Reference[HttpServer](createWebserver(9002, counter3))
 
-    Thread.sleep(5000)
 
     "Register some services" in {
+      Thread.sleep(10000)
       serviceNode1.registerService(service1)
       serviceNode2.registerService(service2)
       serviceNode3.registerService(service3)

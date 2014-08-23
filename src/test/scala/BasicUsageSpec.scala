@@ -23,17 +23,17 @@ class BasicUsageSpec extends Specification with Tags {
     val service2 = Service(IdGenerator.uuid, "SERVICE2", "http://monservice:9000/service2")
     val service3 = Service(IdGenerator.uuid, "SERVICE3", "http://monservice:9000/service3")
 
-    Thread.sleep(5000)
 
     "Register some services" in {
+      Thread.sleep(10000) // Waiting for proper cluster joining
       reg1 = serviceNode1.registerService(service1)
       reg2 = serviceNode2.registerService(service2)
       reg3 = serviceNode3.registerService(service3)
-      Thread.sleep(2000)
       success
     }
 
     "Check if services are registered" in {
+      Thread.sleep(2000) // waiting for node sync
       serviceNode1.services().size shouldEqual 3
       serviceNode2.services().size shouldEqual 3
       serviceNode3.services().size shouldEqual 3
@@ -41,6 +41,8 @@ class BasicUsageSpec extends Specification with Tags {
     }
 
     "Check if filtered services are registered" in {
+
+      Thread.sleep(2000)
 
       serviceNode1.service("SERVICE4") should beNone
       serviceNode2.service("SERVICE4") should beNone

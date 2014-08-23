@@ -69,19 +69,12 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   }
 
   def askEveryoneButMe(): Unit = {
-    Logger("InternalServices").debug(s"[$name] Asking everyone its state ...")
-    Logger("InternalServices").debug(s"[$name] ${stateAsString()}")
     import scala.collection.JavaConversions._
     cluster.state.getMembers.toList.filter(_.address != cluster.selfAddress).foreach { member =>
-      Logger("InternalServices").debug(s"[$name]Asking ${member.address}")
       askState(member.address).andThen {
         case Success(state) => {
-          Logger("InternalServices").debug(s"[$name]state of ${member.address} is $state")
-          if (!globalState.containsKey(member)) {
-            globalState.putIfAbsent(cluster.selfAddress, new util.HashSet[Service]())
-          }
-          globalState.get(cluster.selfAddress).addAll(state)
-          Logger("InternalServices").debug(s"[$name] Global state after modif is $globalState")
+          globalState.put(member.address, new util.HashSet[Service]())
+          globalState.get(member.address).addAll(state)
         }
         case Failure(e) => Logger("InternalServices").error(s"[$name] Error while asking state", e)
       }
@@ -97,7 +90,9 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   def askState(to: Address): Future[java.util.Set[Service]] = {
     def askIt = akka.pattern.ask(system.actorSelection(RootActorPath(to) / "user" / "StateManagerActor"), WhatIsYourState())(Timeout(10, TimeUnit.SECONDS)).mapTo[NodeState].map(_.state)
-    Futures.retry(5)(askIt)(system.dispatcher)
+    Futures.retry(5)(askIt)(system.dispatcher).andThen {
+      case state => //Logger("InternalServices").debug(s"State of $to is $state")
+    }
   }
 
   override def joinSelf(): ServicesApi = join(Seq(s"$address:$port"))
@@ -137,11 +132,12 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   override def registerService(service: Service): ServiceRegistration = {
     Logger("InternalServices").debug(s"[$name] Register service : $service")
-    if (!globalState.containsKey(service.name)) {
+    if (!globalState.containsKey(cluster.selfAddress)) {
       globalState.putIfAbsent(cluster.selfAddress, new util.HashSet[Service]())
     }
     globalState.get(cluster.selfAddress).add(service)
     askEveryoneButMe()
+    tellEveryoneToAskMe()
     Logger("InternalServices").debug(s"[$name] ${stateAsString()}")
     // TODO : tell listeners that service is up
     new ServiceRegistration(this, service)

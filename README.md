@@ -28,8 +28,10 @@ val reg1 = serviceNode1.registerService(service1)
 val reg2 = serviceNode2.registerService(service2)
 val reg3 = serviceNode3.registerService(service3)
 
-val services1: Set[Service] = serviceNode1.services("SERVICE1")
-val services2: Option[Service] = serviceNode1.service("SERVICE2")
+val services1: Set[Service] = serviceNode1.services("SERVICE1") // do whatever you want with those
+...
+val services2: Option[Service] = serviceNode1.service("SERVICE2") // do whatever you want with that one
+...
 
 val client = serviceNode1.client("SERVICE1")
 
