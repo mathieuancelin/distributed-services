@@ -35,5 +35,9 @@ test in assembly := {}
 
 fork in test := true
 
+parallelExecution in Test := false
+
+testForkedParallel in Test := false
+
 
 

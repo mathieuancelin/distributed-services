@@ -35,18 +35,15 @@ private[services] object ServiceDirectory {
 
 private[services] class ServiceDirectory(val name: String, val configuration: Configuration, val system: ActorSystem, val cluster: Cluster, address: String, port: Int) extends ServicesApi with JoinableServices {
 
-  val globalState = new ConcurrentHashMap[Address, util.Set[Service]]()
-  //val listeners = Agent[Set[ActorRef]](Set[ActorRef]())(system.dispatcher)
-
+  implicit val ec = system.dispatcher
+  val logger = Logger("InternalServices")
   val metrics = new MetricRegistry
+  val globalState = new ConcurrentHashMap[Address, util.Set[Service]]()
   val jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
-
-  jmxRegistry.start()
-
   val stateManager = system.actorOf(Props(classOf[StateManagerActor], this), "StateManagerActor")
   val clusterListener = system.actorOf(Props(classOf[ClusterListener], this), "ClusterListener")
 
-  implicit val ec = system.dispatcher
+  jmxRegistry.start()
 
   askEveryoneButMe()
   tellEveryoneToAskMe()
@@ -76,7 +73,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
           globalState.put(member.address, new util.HashSet[Service]())
           globalState.get(member.address).addAll(state)
         }
-        case Failure(e) => Logger("InternalServices").error(s"[$name] Error while asking state", e)
+        case Failure(e) => logger.error(s"[$name] Error while asking state", e)
       }
     }
   }
@@ -91,7 +88,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   def askState(to: Address): Future[java.util.Set[Service]] = {
     def askIt = akka.pattern.ask(system.actorSelection(RootActorPath(to) / "user" / "StateManagerActor"), WhatIsYourState())(Timeout(10, TimeUnit.SECONDS)).mapTo[NodeState].map(_.state)
     Futures.retry(5)(askIt)(system.dispatcher).andThen {
-      case state => //Logger("InternalServices").debug(s"State of $to is $state")
+      case state => //logger.debug(s"State of $to is $state")
     }
   }
 
@@ -131,14 +128,14 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   }
 
   override def registerService(service: Service): ServiceRegistration = {
-    Logger("InternalServices").debug(s"[$name] Register service : $service")
+    logger.debug(s"[$name] Register service : $service")
     if (!globalState.containsKey(cluster.selfAddress)) {
       globalState.putIfAbsent(cluster.selfAddress, new util.HashSet[Service]())
     }
     globalState.get(cluster.selfAddress).add(service)
     askEveryoneButMe()
     tellEveryoneToAskMe()
-    Logger("InternalServices").debug(s"[$name] ${stateAsString()}")
+    logger.debug(s"[$name] ${stateAsString()}")
     // TODO : tell listeners that service is up
     new ServiceRegistration(this, service)
   }
