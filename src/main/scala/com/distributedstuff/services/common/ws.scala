@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit
 
 import com.google.common.io.Files
 import com.squareup.okhttp._
-import play.api.libs.json.{Json, JsValue}
+import play.api.libs.json.{JsValue, Json}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -31,6 +31,15 @@ object WS {
   def url(u: String, client: OkHttpClient) = RequestHolder(url = u, client = client)
 }
 
+object Http {
+  def url(u: String) = RequestHolder(url = u, client = ClientHolder.client)
+  def url(u: String, client: OkHttpClient) = RequestHolder(url = u, client = client)
+}
+
+case class Cookie(name: String, value: String, domain: Option[String] = None, expires:  Option[String] = None, path: Option[String] = None, secure: Boolean = false, httpOnly: Boolean = false) {
+  def toCookie = s"$name=$value" + domain.map("; domain=" + _).getOrElse("") + expires.map("; expires=" + _).getOrElse("") + path.map("; path=" + _).getOrElse("") + (if(secure) "; secure" else "") + (if(httpOnly) "; HttpOnly" else "")
+}
+
 case class RequestHolder(
                               url: String,
                               client: OkHttpClient,
@@ -51,8 +60,7 @@ case class RequestHolder(
   def withAuth(user: String, password: String): RequestHolder = this.copy(authenticator = Some(new Authenticator {
     override def authenticateProxy(proxy: net.Proxy, response: Response): Request = null
     override def authenticate(proxy: net.Proxy, response: Response): Request = {
-      val credential = Credentials.basic(user, password)
-      response.request().newBuilder().header("Authorization", credential).build()
+      response.request().newBuilder().header("Authorization", Credentials.basic(user, password)).build()
     }
   }))
 
@@ -72,17 +80,19 @@ case class RequestHolder(
 
   def withMediaType(mt: String): RequestHolder = this.copy(media = mt)
 
-  def withBody(body: String): RequestHolder = this.copy(body = Some(body.getBytes("UTF-8")))
+  def withBody(body: String): RequestHolder = this.copy(body = Some(body.getBytes("UTF-8")), media = "text/plain")
 
-  def withBody(jsv: JsValue): RequestHolder = this.copy(body = Some(Json.stringify(jsv).getBytes("UTF-8")))
+  def withBody(jsv: JsValue): RequestHolder = this.copy(body = Some(Json.stringify(jsv).getBytes("UTF-8")), media = "application/json")
 
-  def withBody(body: Array[Byte]): RequestHolder = this.copy(body = Some(body))
+  def withBody(body: Array[Byte]): RequestHolder = this.copy(body = Some(body), media = "application/octet-stream")
 
-  def withBody(file: File): RequestHolder = this.copy(body = Some(Files.toByteArray(file)))
+  def withBody(file: File): RequestHolder = this.copy(body = Some(Files.toByteArray(file)), media = "application/octet-stream" )
 
   def withBody(b: RequestBody): RequestHolder = this.copy(rbody = Some(b))
 
   def withHeaders(h: (String, String)*): RequestHolder = this.copy(headers = headers ++ h.toSeq)
+
+  def withCookies(cookies: Cookie*): RequestHolder = withHeaders(cookies.toSeq.map(c => ("Set-Cookie", c.toCookie)):_*)
 
   def withExecutionContext(implicit ec: ExecutionContext) = this.copy(client = client.setDispatcher(new Dispatcher(ExecutionContextExecutorServiceBridge(ec))))
 
@@ -152,5 +162,6 @@ case class RequestHolder(
 package object implicits {
   implicit final class JsonableResponse[A](response: Response) {
     def json: JsValue = Json.parse(response.body().string())
+    def jsonOpt: Option[JsValue] = if (response.isSuccessful) Some(json) else None
   }
 }
