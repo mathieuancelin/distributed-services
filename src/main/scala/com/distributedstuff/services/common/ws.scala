@@ -1,10 +1,11 @@
-package com.distributedstuff.services.common
+package com.distributedstuff.services.common.http
 
 import java.io.{File, IOException}
 import java.net
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
+import com.distributedstuff.services.common.ExecutionContextExecutorServiceBridge
 import com.google.common.io.Files
 import com.squareup.okhttp._
 import play.api.libs.json.{JsValue, Json}
@@ -25,11 +26,6 @@ private object DELETE extends Method
 private object PATCH extends Method
 private object HEAD extends Method
 private object OPTIONS extends Method
-
-object WS {
-  def url(u: String) = RequestHolder(url = u, client = ClientHolder.client)
-  def url(u: String, client: OkHttpClient) = RequestHolder(url = u, client = client)
-}
 
 object Http {
   def url(u: String) = RequestHolder(url = u, client = ClientHolder.client)
@@ -159,8 +155,8 @@ case class RequestHolder(
   }
 }
 
-package object implicits {
-  implicit final class JsonableResponse[A](response: Response) {
+package object support {
+  implicit final class JsonSupport(response: Response) {
     def json: JsValue = Json.parse(response.body().string())
     def jsonOpt: Option[JsValue] = if (response.isSuccessful) Some(json) else None
   }

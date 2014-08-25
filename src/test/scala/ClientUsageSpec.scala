@@ -4,8 +4,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
-import com.distributedstuff.services.common.{Http, IdGenerator, Reference, WS}
-import com.distributedstuff.services.common.implicits.JsonableResponse
+import com.distributedstuff.services.common.http.Http
+import com.distributedstuff.services.common.http.support._
+import com.distributedstuff.services.common.{IdGenerator, Reference}
 import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
 import com.squareup.okhttp.OkHttpClient
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
