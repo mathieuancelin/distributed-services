@@ -28,28 +28,45 @@ private object HEAD extends Method
 private object OPTIONS extends Method
 
 object Http {
-  def url(u: String) = RequestHolder(url = u, client = ClientHolder.client)
-  def url(u: String, client: OkHttpClient) = RequestHolder(url = u, client = client)
+  def url(u: String) = new RequestHolder(url = u, client = ClientHolder.client)
+  def url(u: String, client: OkHttpClient) = new RequestHolder(url = u, client = client)
 }
 
 case class Cookie(name: String, value: String, domain: Option[String] = None, expires:  Option[String] = None, path: Option[String] = None, secure: Boolean = false, httpOnly: Boolean = false) {
   def toCookie = s"$name=$value" + domain.map("; domain=" + _).getOrElse("") + expires.map("; expires=" + _).getOrElse("") + path.map("; path=" + _).getOrElse("") + (if(secure) "; secure" else "") + (if(httpOnly) "; HttpOnly" else "")
 }
 
-case class RequestHolder(
-                              url: String,
-                              client: OkHttpClient,
-                              body: Option[Array[Byte]] = None,
-                              rbody: Option[RequestBody] = None,
-                              vhost: Option[String] = None,
-                              headers: Seq[(String, String)] = Seq(),
-                              params: Seq[(String, String)] = Seq(),
-                              timeout: Option[Duration] = Some(Duration(60, TimeUnit.SECONDS)),
-                              redirect: Boolean = false,
-                              authenticator: Option[Authenticator] = None,
-                              proxy: Option[java.net.Proxy] = None,
-                              media: String = "application/octet-stream"
-                           ) {
+class RequestHolder(
+                      url: String,
+                      client: OkHttpClient,
+                      body: Option[Array[Byte]] = None,
+                      rbody: Option[RequestBody] = None,
+                      vhost: Option[String] = None,
+                      headers: Seq[(String, String)] = Seq(),
+                      params: Seq[(String, String)] = Seq(),
+                      timeout: Option[Duration] = Some(Duration(60, TimeUnit.SECONDS)),
+                      redirect: Boolean = false,
+                      authenticator: Option[Authenticator] = None,
+                      proxy: Option[java.net.Proxy] = None,
+                      media: String = "application/octet-stream"
+                   ) {
+
+  def copy(
+           url: String = this.url,
+           client: OkHttpClient = this.client,
+           body: Option[Array[Byte]] = this.body,
+           rbody: Option[RequestBody] = this.rbody,
+           vhost: Option[String] = this.vhost,
+           headers: Seq[(String, String)] = this.headers,
+           params: Seq[(String, String)] = this.params,
+           timeout: Option[Duration] = this.timeout,
+           redirect: Boolean = this.redirect,
+           authenticator: Option[Authenticator] = this.authenticator,
+           proxy: Option[java.net.Proxy] = this.proxy,
+           media: String = this.media
+     ): RequestHolder = {
+    new RequestHolder(url, client, body, rbody, vhost, headers, params, timeout, redirect, authenticator, proxy, media)
+  }
 
   def withAuth(a: Authenticator): RequestHolder = this.copy(authenticator = Some(a))
 
