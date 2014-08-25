@@ -1,14 +1,13 @@
-import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
-import com.distributedstuff.services.common.{IdGenerator, Reference}
+import com.distributedstuff.services.common.{IdGenerator, Reference, WS}
+import com.distributedstuff.services.common.implicits.JsonableResponse
 import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
-import com.squareup.okhttp
-import com.squareup.okhttp.{Callback, Request, OkHttpClient}
+import com.squareup.okhttp.OkHttpClient
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.specs2.mutable.{Specification, Tags}
 import play.api.libs.json.{JsObject, Json}
@@ -43,15 +42,7 @@ class ClientUsageSpec extends Specification with Tags {
     promise.future
   }
 
-  def okHttpConversion(service: Service): Future[JsObject] = {
-    val promise = Promise[JsObject]()
-    new Request.Builder().url(service.url).build()
-    client.newCall(new Request.Builder().url(service.url).build()).enqueue(new Callback {
-      override def onFailure(request: Request, e: IOException): Unit = promise.tryFailure(e)
-      override def onResponse(response: okhttp.Response): Unit = promise.trySuccess(Json.parse(response.body().string()).as[JsObject])
-    })
-    promise.future
-  }
+  def okHttpConversion(service: Service): Future[JsObject] = WS.url(service.url).get().map(_.json.as[JsObject])
 
   def createWebserver(port: Int, counter: AtomicInteger) = {
     val server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0)
