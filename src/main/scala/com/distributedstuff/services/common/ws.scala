@@ -28,8 +28,7 @@ private object HEAD extends Method
 private object OPTIONS extends Method
 
 object Http {
-  def url(u: String) = new RequestHolder(url = u, client = ClientHolder.client)
-  def url(u: String, client: OkHttpClient) = new RequestHolder(url = u, client = client)
+  def url(u: String)(implicit client: OkHttpClient = ClientHolder.client) = new RequestHolder(url = u, client = client)
 }
 
 case class Cookie(name: String, value: String, domain: Option[String] = None, expires:  Option[String] = None, path: Option[String] = None, secure: Boolean = false, httpOnly: Boolean = false) {
