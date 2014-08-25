@@ -32,6 +32,9 @@ trait JoinableServices {
 
 trait ServicesApi {
 
+  // TODO : add version management
+  // TODO : merge roles in API with default param values
+  // TODO : search with meta searchable
   def stop(): Services
 
   def services(): Map[String, Set[Service]]

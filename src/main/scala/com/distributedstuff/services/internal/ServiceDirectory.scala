@@ -16,6 +16,9 @@ import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.util.{Try, Failure, Success}
 
+
+// TODO : register services from config file
+// TODO : bootstrap from config API
 private[services] object ServiceDirectory {
   private[internal] val systemName = "distributed-services"
   def start(name: String, address: String, port: Int, role: String, configuration: Configuration): ServiceDirectory = {

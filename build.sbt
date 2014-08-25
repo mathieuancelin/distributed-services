@@ -27,6 +27,8 @@ libraryDependencies += "com.codahale.metrics"      % "metrics-core"             
 
 libraryDependencies += "com.ning"                  % "async-http-client"                  % "1.8.8"
 
+libraryDependencies += "com.squareup.okhttp"       % "okhttp"                             % "2.0.0"
+
 libraryDependencies += "org.specs2"                %% "specs2"                            % "2.3.12"            % "test"
 
 jarName in assembly := "distributed-services.jar"

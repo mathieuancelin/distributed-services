@@ -1,3 +1,4 @@
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicInteger
@@ -6,6 +7,8 @@ import java.util.concurrent.{Executors, TimeUnit}
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
 import com.distributedstuff.services.common.{IdGenerator, Reference}
 import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
+import com.squareup.okhttp
+import com.squareup.okhttp.{Callback, Request, OkHttpClient}
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.specs2.mutable.{Specification, Tags}
 import play.api.libs.json.{JsObject, Json}
@@ -28,12 +31,24 @@ class ClientUsageSpec extends Specification with Tags {
 
   private[this] val httpClient: AsyncHttpClient = new AsyncHttpClient(config)
 
+  private[this] val client = new OkHttpClient()
+
   def ningClientConversion(service: Service): Future[JsObject] = {
     val promise = Promise[JsObject]()
     httpClient.prepareGet(service.url).execute(new AsyncCompletionHandler[Unit] {
       override def onCompleted(response: Response): Unit = {
         promise.trySuccess(Json.parse(response.getResponseBody).as[JsObject])
       }
+    })
+    promise.future
+  }
+
+  def okHttpConversion(service: Service): Future[JsObject] = {
+    val promise = Promise[JsObject]()
+    new Request.Builder().url(service.url).build()
+    client.newCall(new Request.Builder().url(service.url).build()).enqueue(new Callback {
+      override def onFailure(request: Request, e: IOException): Unit = promise.tryFailure(e)
+      override def onResponse(response: okhttp.Response): Unit = promise.trySuccess(Json.parse(response.body().string()).as[JsObject])
     })
     promise.future
   }
@@ -91,7 +106,7 @@ class ClientUsageSpec extends Specification with Tags {
         Future {
           val client = api.client("SERVICE1")
           for (i <- 1 to 1000) {
-            val json = Await.result(client.callM(ningClientConversion), Duration(10, TimeUnit.SECONDS))
+            val json = Await.result(client.callM(okHttpConversion), Duration(10, TimeUnit.SECONDS))
             json
           }
         }
