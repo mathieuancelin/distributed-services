@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
-import com.distributedstuff.services.common.{IdGenerator, Reference, WS}
+import com.distributedstuff.services.common.{Http, IdGenerator, Reference, WS}
 import com.distributedstuff.services.common.implicits.JsonableResponse
 import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
 import com.squareup.okhttp.OkHttpClient
@@ -42,7 +42,7 @@ class ClientUsageSpec extends Specification with Tags {
     promise.future
   }
 
-  def okHttpConversion(service: Service): Future[JsObject] = WS.url(service.url).get().map(_.json.as[JsObject])
+  def okHttpConversion(service: Service): Future[JsObject] = Http.url(service.url).get().map(_.json.as[JsObject])
 
   def createWebserver(port: Int, counter: AtomicInteger) = {
     val server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0)
