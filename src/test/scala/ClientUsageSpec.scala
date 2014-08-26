@@ -64,6 +64,17 @@ class ClientUsageSpec extends Specification with Tags {
     server
   }
 
+
+  def user(api: ServicesApi) = {
+    Future {
+      val client = api.client("SERVICE1")
+      for (i <- 1 to 1000) {
+        val json = Await.result(client.callM(okHttpConversion), Duration(10, TimeUnit.SECONDS))
+        json
+      }
+    }
+  }
+
   "Service API" should {
 
     val serviceNode1 = Services("node1").start("127.0.0.1", 7777).joinSelf()
@@ -92,22 +103,44 @@ class ClientUsageSpec extends Specification with Tags {
       success
     }
 
-    "Run clients" in {
-
-      def user(api: ServicesApi) = {
-        Future {
-          val client = api.client("SERVICE1")
-          for (i <- 1 to 1000) {
-            val json = Await.result(client.callM(okHttpConversion), Duration(10, TimeUnit.SECONDS))
-            json
-          }
-        }
-      }
+    "Run clients with OkHttp" in {
       Await.result(Future.sequence(Seq(user(serviceNode1), user(serviceNode2), user(serviceNode3))), Duration(100, TimeUnit.SECONDS))
       success
     }
 
-    "Check if client does loadbalancing" in {
+    "Check if OkHttp client does loadbalancing" in {
+      println("=====================================================================")
+      println(s" Counter 1 : ${counter1.get()}")
+      println(s" Counter 2 : ${counter2.get()}")
+      println(s" Counter 3 : ${counter3.get()}")
+      println("=====================================================================")
+      counter1.get() should be_>(0)
+      counter2.get() should be_>(0)
+      counter3.get() should be_>(0)
+
+      counter1.get() should be_>(900)
+      counter2.get() should be_>(900)
+      counter3.get() should be_>(900)
+
+      counter1.get() should be_<(1100)
+      counter2.get() should be_<(1100)
+      counter3.get() should be_<(1100)
+      success
+    }
+
+    "Reset" in {
+      counter1.set(0)
+      counter2.set(0)
+      counter3.set(0)
+      success
+    }
+
+    "Run clients with Ning" in {
+      Await.result(Future.sequence(Seq(user(serviceNode1), user(serviceNode2), user(serviceNode3))), Duration(100, TimeUnit.SECONDS))
+      success
+    }
+
+    "Check if Ning client does loadbalancing" in {
       println("=====================================================================")
       println(s" Counter 1 : ${counter1.get()}")
       println(s" Counter 2 : ${counter2.get()}")

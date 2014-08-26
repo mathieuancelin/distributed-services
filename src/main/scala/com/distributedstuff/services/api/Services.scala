@@ -35,7 +35,7 @@ trait ServicesApi {
   // TODO : search with meta searchable
   def stop(): Services
 
-  def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Map[String, Set[Service]]
+  def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service]
 
   def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service]
 
@@ -44,6 +44,8 @@ trait ServicesApi {
   def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Client
 
   def registerService(service: Service): Registration
+
+  def printState(): Unit
 
   //def registerServiceListener(listener: ActorRef): Registration
 }

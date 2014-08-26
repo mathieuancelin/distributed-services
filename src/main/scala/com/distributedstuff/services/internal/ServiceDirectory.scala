@@ -10,7 +10,7 @@ import com.codahale.metrics.{JmxReporter, MetricRegistry}
 import com.distributedstuff.services.api._
 import com.distributedstuff.services.common.{Configuration, Futures, Logger}
 import com.typesafe.config.ConfigFactory
-import play.api.libs.json.Json
+import play.api.libs.json.{JsString, JsArray, Json}
 
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
@@ -20,6 +20,9 @@ import scala.util.{Try, Failure, Success}
 // TODO : bootstrap from config API
 private[services] object ServiceDirectory {
   private[internal] val systemName = "distributed-services"
+
+  Logger.configure()
+
   def start(name: String, address: String, port: Int, role: String, configuration: Configuration): ServiceDirectory = {
     val configBuilder = new StringBuilder()
     var config = configuration.underlying.getConfig(systemName)
@@ -59,12 +62,15 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
         services = services.append(Json.obj(
           "uid" -> service.uid,
           "name" -> service.name,
-          "url" -> service.url
+          "url" -> service.url,
+          "version" -> JsString(service.version.getOrElse("*")),
+          "roles" -> JsArray(service.roles.map(JsString))
         ))
       }
       json = json ++ Json.obj(e.getKey.toString -> services)
     }
-    s"[$name] State is : ${Json.prettyPrint(json)}"
+    val size = globalState.values().toList.flatMap(_.toList).size
+    s"[$name] State is ($size services registered) : ${Json.prettyPrint(json)}"
   }
 
   def askEveryoneButMe(): Unit = {
@@ -130,47 +136,38 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   }
 
   override def registerService(service: Service): ServiceRegistration = {
-    logger.debug(s"[$name] Register service : $service")
+    logger.trace(s"[$name] Register service : $service")
     if (!globalState.containsKey(cluster.selfAddress)) {
       globalState.putIfAbsent(cluster.selfAddress, new util.HashSet[Service]())
     }
     globalState.get(cluster.selfAddress).add(service)
     askEveryoneButMe()
     tellEveryoneToAskMe()
-    logger.debug(s"[$name] ${stateAsString()}")
+    logger.trace(s"[$name] ${stateAsString()}")
     // TODO : tell listeners that service is up
     new ServiceRegistration(this, service)
   }
 
-  private[this] def findAll(roles: Seq[String], in: Seq[String]): Boolean = {
-    for (role <- roles) {
-      if (!in.contains(role)) return false // Yeah because break
-    }
-    true
-  }
-
-  private[this] def merge(a: ConcurrentHashMap[Address, util.Set[Service]], roles: Seq[String], version: Option[String]): Map[String, Set[Service]] = {
+  private[this] def merge(a: ConcurrentHashMap[Address, util.Set[Service]], name: Option[String], roles: Seq[String], version: Option[String]): Set[Service] = {
     import collection.JavaConversions._
-    var map = Map[String, Set[Service]]()
-    a.values().toList.flatMap(_.toList).foreach { service =>
+    a.values().toList.flatMap(_.toList).filter(s => name.getOrElse(s.name) == s.name).filter { service =>
       (roles, version) match {
-        case (seq, None) if seq.nonEmpty && findAll(service.roles, seq) => map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
-        case (seq, Some(v)) if seq.nonEmpty && findAll(service.roles, seq) && version == service.version => map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
-        case (seq, None) if seq.isEmpty => map = map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
-        case (seq, Some(v)) if seq.isEmpty && version == service.version => map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
+        case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
+        case (seq, Some(v)) if seq.isEmpty && version == service.version => true
+        case (seq, None) if seq.nonEmpty && seq.forall(service.roles.contains(_)) => true
+        case (seq, None) if seq.isEmpty => true
+        case _ => false
       }
-    }
-    map
+    }.toSet[Service]
   }
-
-  private[this] def merge(roles: Seq[String], version: Option[String]): Map[String, Set[Service]] = merge(globalState, roles, version)
 
   override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Client = new LoadBalancedClient(name, this)
 
-  override def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(roles, version).getOrElse(name, Set[Service]())
+  override def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(globalState, Some(name), roles, version)
 
-  override def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service] = merge(roles, version).getOrElse(name, List[Service]()).headOption
+  override def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service] = merge(globalState, Some(name), roles, version).headOption
 
-  override def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Map[String, Set[Service]] = merge(roles, version)
+  override def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(globalState, None, roles, version)
 
+  override def printState(): Unit = println(stateAsString())
 }

@@ -7,8 +7,9 @@
     </encoder>
   </appender>
   
-  <logger name="InternalServices" level="INFO" />
-  <logger name="StateManagerActor" level="INFO" />
+  <logger name="com.ning.http" level="WARN" />
+  <logger name="InternalServices" level="DEBUG" />
+  <logger name="StateManagerActor" level="DEBUG" />
 
   <root level="debug">
     <appender-ref ref="STDOUT" />
