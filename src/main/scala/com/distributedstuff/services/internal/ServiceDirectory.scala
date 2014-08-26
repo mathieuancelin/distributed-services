@@ -16,7 +16,6 @@ import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.util.{Try, Failure, Success}
 
-
 // TODO : register services from config file
 // TODO : bootstrap from config API
 private[services] object ServiceDirectory {
@@ -143,30 +142,35 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     new ServiceRegistration(this, service)
   }
 
-  override def client(name: String): Client = new LoadBalancedClient(name, this)
+  private[this] def findAll(roles: Seq[String], in: Seq[String]): Boolean = {
+    for (role <- roles) {
+      if (!in.contains(role)) return false // Yeah because break
+    }
+    true
+  }
 
-  def merge(a: ConcurrentHashMap[Address, util.Set[Service]]): Map[String, Set[Service]] = {
+  private[this] def merge(a: ConcurrentHashMap[Address, util.Set[Service]], roles: Seq[String], version: Option[String]): Map[String, Set[Service]] = {
     import collection.JavaConversions._
     var map = Map[String, Set[Service]]()
     a.values().toList.flatMap(_.toList).foreach { service =>
-      map =  map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
+      (roles, version) match {
+        case (seq, None) if seq.nonEmpty && findAll(service.roles, seq) => map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
+        case (seq, Some(v)) if seq.nonEmpty && findAll(service.roles, seq) && version == service.version => map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
+        case (seq, None) if seq.isEmpty => map = map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
+        case (seq, Some(v)) if seq.isEmpty && version == service.version => map + ((service.name, map.getOrElse(service.name, Set[Service]()) + service))
+      }
     }
     map
   }
 
-  private[this] def merge(): Map[String, Set[Service]] = merge(globalState)
+  private[this] def merge(roles: Seq[String], version: Option[String]): Map[String, Set[Service]] = merge(globalState, roles, version)
 
-  override def services(name: String): Set[Service] = merge().getOrElse(name, Set[Service]())
+  override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Client = new LoadBalancedClient(name, this)
 
-  override def service(name: String): Option[Service] = merge().getOrElse(name, List[Service]()).headOption
+  override def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(roles, version).getOrElse(name, Set[Service]())
 
-  override def services(): Map[String, Set[Service]] = merge()
+  override def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service] = merge(roles, version).getOrElse(name, List[Service]()).headOption
 
-  override def services(roles: Seq[String]): Map[String, Set[Service]] = ??? // TODO : implements role filtering
+  override def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Map[String, Set[Service]] = merge(roles, version)
 
-  override def client(name: String, roles: Seq[String]): Client = ??? // TODO : implements role filtering
-
-  override def services(name: String, roles: Seq[String]): Set[Service] = ??? // TODO : implements role filtering
-
-  override def service(name: String, roles: Seq[String]): Option[Service] = ??? // TODO : implements role filtering
 }

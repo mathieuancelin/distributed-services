@@ -32,26 +32,16 @@ trait JoinableServices {
 
 trait ServicesApi {
 
-  // TODO : add version management
-  // TODO : merge roles in API with default param values
   // TODO : search with meta searchable
   def stop(): Services
 
-  def services(): Map[String, Set[Service]]
+  def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Map[String, Set[Service]]
 
-  def services(roles: Seq[String]): Map[String, Set[Service]]
+  def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service]
 
-  def services(name: String): Set[Service]
+  def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service]
 
-  def services(name: String, roles: Seq[String]): Set[Service]
-
-  def service(name: String): Option[Service]
-
-  def service(name: String, roles: Seq[String]): Option[Service]
-
-  def client(name: String): Client
-
-  def client(name: String, roles: Seq[String]): Client
+  def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Client
 
   def registerService(service: Service): Registration
 

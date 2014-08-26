@@ -34,9 +34,9 @@ class BasicUsageSpec extends Specification with Tags {
 
     "Check if services are registered" in {
       Thread.sleep(2000) // waiting for node sync
-      serviceNode1.services().size shouldEqual 3
-      serviceNode2.services().size shouldEqual 3
-      serviceNode3.services().size shouldEqual 3
+      serviceNode1.allServices().size shouldEqual 3
+      serviceNode2.allServices().size shouldEqual 3
+      serviceNode3.allServices().size shouldEqual 3
       success
     }
 
@@ -100,9 +100,9 @@ class BasicUsageSpec extends Specification with Tags {
     }
 
     "Check if services unregistered" in {
-      serviceNode1.services().size shouldEqual 0
-      serviceNode2.services().size shouldEqual 0
-      serviceNode3.services().size shouldEqual 0
+      serviceNode1.allServices().size shouldEqual 0
+      serviceNode2.allServices().size shouldEqual 0
+      serviceNode3.allServices().size shouldEqual 0
       success
     }
 
