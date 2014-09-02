@@ -38,11 +38,7 @@ package object akkasupport {
     implicit val ec = system.dispatcher
 
     // akka.tcp://mysystem@127.0.0.1:9876/user/myservice1
-    private[this] def target = client.call {
-      service =>
-        val actor: String = service.url.split("://").toList(1).split("/").toList(1)
-        (AddressFromURIString(service.url.replace("/" + actor, "")), actor)
-    }.map(t => system.actorSelection(RootActorPath(t._1) / t._2))
+    private[this] def target = client.call(s => system.actorSelection(s.url))
 
     def !(message: Any, sender: ActorRef = system.deadLetters): Future[Unit] = tell(message, sender)
 
@@ -58,8 +54,7 @@ package object akkasupport {
 
     def broadcast(message: Any, sender: ActorRef = system.deadLetters): Future[Unit] = {
       services.services(name, roles, version).foreach { service =>
-        val actor: String = service.url.split("://").toList(1).split("/").toList(1)
-        system.actorSelection(RootActorPath(AddressFromURIString(service.url.replace("/" + actor, ""))) / actor).tell(message, sender)
+        system.actorSelection(service.url).tell(message, sender)
       }
       Future.successful(())
     }

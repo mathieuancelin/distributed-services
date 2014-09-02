@@ -192,4 +192,11 @@ package object support {
     def json: JsValue = Json.parse(response.body().string())
     def jsonOpt: Option[JsValue] = if (response.isSuccessful) Some(json) else None
   }
+  implicit final class FutureJsonSupport(response: Future[Response]) {
+    def json(implicit ec: ExecutionContext): Future[JsValue] = response.map(r => Json.parse(r.body().string()))
+    def jsonOpt(implicit ec: ExecutionContext): Future[Option[JsValue]] = response.map {
+      case r if r.isSuccessful => Some( Json.parse(r.body().string()))
+      case _ => None
+    }
+  }
 }
