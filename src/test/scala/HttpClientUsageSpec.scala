@@ -13,6 +13,8 @@ import play.api.libs.json.Json
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 
+import com.distributedstuff.services.common.http.support._
+
 class HttpClientUsageSpec extends Specification with Tags {
   sequential
 
@@ -43,7 +45,7 @@ class HttpClientUsageSpec extends Specification with Tags {
       val client = api.httpClient("SERVICE1")
       for (i <- 1 to 1000) {
         try {
-          val json = Await.result(client.get(), Duration(10, TimeUnit.SECONDS))
+          val json = Await.result(client.get().map(_.json), Duration(10, TimeUnit.SECONDS))
           json
         } catch {
           case e => println("fuuuuuuu")

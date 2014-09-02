@@ -8,7 +8,6 @@ import com.distributedstuff.services.common.http.Http
 import com.distributedstuff.services.common.http.support._
 import com.distributedstuff.services.common.{IdGenerator, Reference}
 import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
-import com.squareup.okhttp.OkHttpClient
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.specs2.mutable.{Specification, Tags}
 import play.api.libs.json.{JsObject, Json}
@@ -30,8 +29,6 @@ class ClientUsageSpec extends Specification with Tags {
     .build()
 
   private[this] val httpClient: AsyncHttpClient = new AsyncHttpClient(config)
-
-  private[this] val client = new OkHttpClient()
 
   def ningClientConversion(service: Service): Future[JsObject] = {
     val promise = Promise[JsObject]()

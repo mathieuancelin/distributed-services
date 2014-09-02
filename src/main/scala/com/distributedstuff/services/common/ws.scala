@@ -5,7 +5,6 @@ import java.net
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
-import com.distributedstuff.services.api.Client
 import com.distributedstuff.services.common.ExecutionContextExecutorServiceBridge
 import com.distributedstuff.services.internal.LoadBalancedClient
 import com.google.common.io.Files
