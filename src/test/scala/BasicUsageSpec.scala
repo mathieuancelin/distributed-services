@@ -13,15 +13,15 @@ class BasicUsageSpec extends Specification with Tags {
 
   "Service API" should {
 
-    val serviceNode1 = Services("node1").start("127.0.0.1", 7777).joinSelf()
+    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7777)
     val serviceNode2 = Services("node2").start().join("127.0.0.1:7777")
     val serviceNode3 = Services("node3").start().join("127.0.0.1:7777")
     var reg1: Registration = null
     var reg2: Registration = null
     var reg3: Registration = null
-    val service1 = Service(IdGenerator.uuid, "SERVICE1", "http://monservice:9000/service1")
-    val service2 = Service(IdGenerator.uuid, "SERVICE2", "http://monservice:9000/service2")
-    val service3 = Service(IdGenerator.uuid, "SERVICE3", "http://monservice:9000/service3")
+    val service1 = Service(name = "SERVICE1", url = "http://monservice:9000/service1")
+    val service2 = Service(name = "SERVICE2", url = "http://monservice:9000/service2")
+    val service3 = Service(name = "SERVICE3", url = "http://monservice:9000/service3")
 
 
     "Register some services" in {

@@ -1,7 +1,9 @@
 package com.distributedstuff.services.api
 
+import com.distributedstuff.services.common.IdGenerator
+
 case class Service(
-                    uid: String,
+                    uid: String = IdGenerator.uuid,
                     name: String,
                     url: String,
                     metadata: Map[String, String] = Map[String, String](),

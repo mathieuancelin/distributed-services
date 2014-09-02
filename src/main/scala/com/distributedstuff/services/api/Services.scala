@@ -21,6 +21,8 @@ class Services(name: String, configuration: Configuration = Configuration.load()
   def start(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = "DISTRIBUTED-SERVICES-NODE"): JoinableServices = {
     ServiceDirectory.start(name, host, port, role, configuration)
   }
+
+  def startAndJoin(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = "DISTRIBUTED-SERVICES-NODE"): ServicesApi = start(host, port, role).joinSelf()
 }
 
 trait JoinableServices {

@@ -5,7 +5,9 @@ import java.net
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
+import com.distributedstuff.services.api.Client
 import com.distributedstuff.services.common.ExecutionContextExecutorServiceBridge
+import com.distributedstuff.services.internal.LoadBalancedClient
 import com.google.common.io.Files
 import com.squareup.okhttp._
 import play.api.libs.json.{JsValue, Json}
@@ -28,7 +30,8 @@ private object HEAD extends Method
 private object OPTIONS extends Method
 
 object Http {
-  def url(u: String)(implicit client: OkHttpClient = ClientHolder.client) = new RequestHolder(url = u, client = client)
+  def url(u: => String)(implicit client: OkHttpClient = ClientHolder.client) = new RequestHolder(url = u, client = client)
+  def empty()(implicit client: OkHttpClient = ClientHolder.client) = new RequestHolder(url = "", client = client)
 }
 
 case class Cookie(name: String, value: String, domain: Option[String] = None, expires:  Option[String] = None, path: Option[String] = None, secure: Boolean = false, httpOnly: Boolean = false) {
@@ -36,7 +39,7 @@ case class Cookie(name: String, value: String, domain: Option[String] = None, ex
 }
 
 class RequestHolder(
-                      url: String,
+                      url: => String,
                       client: OkHttpClient,
                       body: Option[Array[Byte]] = None,
                       rbody: Option[RequestBody] = None,
@@ -47,11 +50,13 @@ class RequestHolder(
                       redirect: Boolean = false,
                       authenticator: Option[Authenticator] = None,
                       proxy: Option[java.net.Proxy] = None,
-                      media: String = "application/octet-stream"
+                      media: String = "application/octet-stream",
+                      parts: Seq[String] = Seq(),
+                      apiClient: Option[LoadBalancedClient] = None
                    ) {
 
   def copy(
-           url: String = this.url,
+           url: => String = this.url,
            client: OkHttpClient = this.client,
            body: Option[Array[Byte]] = this.body,
            rbody: Option[RequestBody] = this.rbody,
@@ -62,10 +67,20 @@ class RequestHolder(
            redirect: Boolean = this.redirect,
            authenticator: Option[Authenticator] = this.authenticator,
            proxy: Option[java.net.Proxy] = this.proxy,
-           media: String = this.media
+           media: String = this.media,
+           parts: Seq[String] = this.parts,
+           apiClient: Option[LoadBalancedClient] = this.apiClient
      ): RequestHolder = {
-    new RequestHolder(url, client, body, rbody, vhost, headers, params, timeout, redirect, authenticator, proxy, media)
+    new RequestHolder(url, client, body, rbody, vhost, headers, params, timeout, redirect, authenticator, proxy, media, parts, apiClient)
   }
+
+  def addPart(part: String): RequestHolder = this.copy(parts = this.parts :+ part)
+
+  def withPart(part: String): RequestHolder = addPart(part)
+
+  def withUrl(u: => String): RequestHolder = this.copy(url = u)
+
+  private[services] def withApiClient(cli: LoadBalancedClient): RequestHolder = this.copy(apiClient = Some(cli))
 
   def withAuth(a: Authenticator): RequestHolder = this.copy(authenticator = Some(a))
 
@@ -142,10 +157,12 @@ class RequestHolder(
     for(header <- headers) {
       builder = builder.addHeader(header._1, header._2)
     }
+    val theUrl = apiClient.flatMap(_.bestService).map(_.url).getOrElse(url)
+    val urlWithPart = theUrl + parts.mkString("/").replace("//", "/")
     val finalUrl = params match {
-      case p if p.nonEmpty && url.contains("?") => url + "&" + params.toSeq.map(t => (t._1, URLEncoder.encode(t._2, "UTF-8"))).mkString("&")
-      case p if p.nonEmpty => url + "?" + params.toSeq.map(t => (t._1, URLEncoder.encode(t._2, "UTF-8"))).mkString("&")
-      case p => url
+      case p if p.nonEmpty && urlWithPart.contains("?") => urlWithPart + "&" + params.toSeq.map(t => (t._1, URLEncoder.encode(t._2, "UTF-8"))).mkString("&")
+      case p if p.nonEmpty => urlWithPart + "?" + params.toSeq.map(t => (t._1, URLEncoder.encode(t._2, "UTF-8"))).mkString("&")
+      case p => urlWithPart
     }
     builder = builder.url(finalUrl)
     val rb: RequestBody =  rbody.getOrElse(RequestBody.create(MediaType.parse(media), body.getOrElse(ClientHolder.empty)))

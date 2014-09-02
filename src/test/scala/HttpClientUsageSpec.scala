@@ -4,46 +4,19 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{Executors, TimeUnit}
 
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
-import com.distributedstuff.services.common.http.Http
-import com.distributedstuff.services.common.http.support._
 import com.distributedstuff.services.common.{IdGenerator, Reference}
-import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
-import com.squareup.okhttp.OkHttpClient
+import com.distributedstuff.services.clients.httpsupport.HttpClientSupport
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.specs2.mutable.{Specification, Tags}
-import play.api.libs.json.{JsObject, Json}
+import play.api.libs.json.Json
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
-class ClientUsageSpec extends Specification with Tags {
+class HttpClientUsageSpec extends Specification with Tags {
   sequential
 
   implicit val ec = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-
-  private[this] val config: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder()
-    .setAllowPoolingConnection(true)
-    .setCompressionEnabled(true)
-    .setRequestTimeoutInMs(60000)
-    .setIdleConnectionInPoolTimeoutInMs(60000)
-    .setIdleConnectionTimeoutInMs(60000)
-    .build()
-
-  private[this] val httpClient: AsyncHttpClient = new AsyncHttpClient(config)
-
-  private[this] val client = new OkHttpClient()
-
-  def ningClientConversion(service: Service): Future[JsObject] = {
-    val promise = Promise[JsObject]()
-    httpClient.prepareGet(service.url).execute(new AsyncCompletionHandler[Unit] {
-      override def onCompleted(response: Response): Unit = {
-        promise.trySuccess(Json.parse(response.getResponseBody).as[JsObject])
-      }
-    })
-    promise.future
-  }
-
-  def okHttpConversion(service: Service): Future[JsObject] = Http.url(service.url).get().map(_.json.as[JsObject])
 
   def createWebserver(port: Int, counter: AtomicInteger) = {
     val server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0)
@@ -67,15 +40,19 @@ class ClientUsageSpec extends Specification with Tags {
 
   def user(api: ServicesApi) = {
     Future {
-      val client = api.client("SERVICE1")
+      val client = api.httpClient("SERVICE1")
       for (i <- 1 to 1000) {
-        val json = Await.result(client.callM(okHttpConversion), Duration(10, TimeUnit.SECONDS))
-        json
+        try {
+          val json = Await.result(client.get(), Duration(10, TimeUnit.SECONDS))
+          json
+        } catch {
+          case e => println("fuuuuuuu")
+        }
       }
     }
   }
 
-  "Service API" should {
+  "Service API with Http support" should {
 
     val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7777)
     val serviceNode2 = Services("node2").start().join("127.0.0.1:7777")
@@ -103,44 +80,12 @@ class ClientUsageSpec extends Specification with Tags {
       success
     }
 
-    "Run clients with OkHttp" in {
+    "Run clients support" in {
       Await.result(Future.sequence(Seq(user(serviceNode1), user(serviceNode2), user(serviceNode3))), Duration(100, TimeUnit.SECONDS))
       success
     }
 
-    "Check if OkHttp client does loadbalancing" in {
-      println("=====================================================================")
-      println(s" Counter 1 : ${counter1.get()}")
-      println(s" Counter 2 : ${counter2.get()}")
-      println(s" Counter 3 : ${counter3.get()}")
-      println("=====================================================================")
-      counter1.get() should be_>(0)
-      counter2.get() should be_>(0)
-      counter3.get() should be_>(0)
-
-      counter1.get() should be_>(900)
-      counter2.get() should be_>(900)
-      counter3.get() should be_>(900)
-
-      counter1.get() should be_<(1100)
-      counter2.get() should be_<(1100)
-      counter3.get() should be_<(1100)
-      success
-    }
-
-    "Reset" in {
-      counter1.set(0)
-      counter2.set(0)
-      counter3.set(0)
-      success
-    }
-
-    "Run clients with Ning" in {
-      Await.result(Future.sequence(Seq(user(serviceNode1), user(serviceNode2), user(serviceNode3))), Duration(100, TimeUnit.SECONDS))
-      success
-    }
-
-    "Check if Ning client does loadbalancing" in {
+    "Check client is balanced" in {
       println("=====================================================================")
       println(s" Counter 1 : ${counter1.get()}")
       println(s" Counter 2 : ${counter2.get()}")
@@ -167,7 +112,6 @@ class ClientUsageSpec extends Specification with Tags {
       server1().stop(0)
       server2().stop(0)
       server3().stop(0)
-      httpClient.close()
       success
     }
   }
