@@ -9,8 +9,8 @@ import akka.remote.transport.ActorTransportAdapter.ListenerRegistered
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, MetricRegistry}
 import com.distributedstuff.services.api._
-import com.distributedstuff.services.common.{Configuration, Futures, Logger}
-import com.typesafe.config.ConfigFactory
+import com.distributedstuff.services.common.{IdGenerator, Configuration, Futures, Logger}
+import com.typesafe.config.{ConfigObject, ConfigFactory}
 import org.joda.time.DateTime
 import play.api.libs.json.{JsString, JsArray, Json}
 
@@ -185,5 +185,19 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
       system.eventStream.unsubscribe(listener, classOf[LifecycleEvent])
     }
     new ListenerRegistration(unregister)
+  }
+
+  override def exposeFromConfig() = {
+    import collection.JavaConversions._
+    val servicesToExpose = configuration.getObjectList("services.autoexpose").getOrElse(new java.util.ArrayList[ConfigObject]()).toList.map { obj =>
+      val config = new Configuration(obj.toConfig)
+      val name = config.getString("name").get // mandatory
+      val url = config.getString("url").get   // mandatory
+      val uid = config.getString("uid").getOrElse(IdGenerator.uuid)
+      val version = config.getString("version")
+      val roles = Option(obj.get("roles")).map(_.unwrapped().asInstanceOf[java.util.List[String]].toSeq).getOrElse(Seq[String]())
+      Service(name = name, version = version, url = url, uid = uid, roles = roles)
+    }
+    servicesToExpose.map(service => registerService(service))
   }
 }

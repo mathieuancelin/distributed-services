@@ -2,6 +2,16 @@ package com.distributedstuff.services.api
 
 import com.distributedstuff.services.common.IdGenerator
 
+/**
+ * Description of a service
+ *
+ * @param uid id of a service instance. Should be unique across the cluster.
+ * @param name name of the cluster. Can be used for multiple service instances.
+ * @param url the location of the service. Protocol agnostic.
+ * @param metadata metadata about the service instance. The library doesn't use those metadata. Can be empty
+ * @param roles the possible roles for the service instance. Can be empty
+ * @param version the version of the service instance. Can be empty
+ */
 case class Service(
                     uid: String = IdGenerator.uuid,
                     name: String,
