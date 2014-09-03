@@ -111,7 +111,7 @@ services {
             name = "SERVICE1"
             url = "http://192.168.1.23:9000/service1"
             version = "2.34"
-            roles = ["master"]
+            roles = ["worker"]
         },
         {
             name = "SERVICE2"
