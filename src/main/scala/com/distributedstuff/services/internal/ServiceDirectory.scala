@@ -78,7 +78,13 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     cluster.state.getMembers.toList.filter(_.address != cluster.selfAddress).foreach { member =>
       askState(member.address).andThen {
         case Success(state) => {
-          // TODO : handle lifecycle events here
+          val old = Option(globalState.get(member.address)).getOrElse(new util.HashSet[Service]())
+          state.foreach { service =>
+            if (!old.contains(service)) system.eventStream.publish(ServiceRegistered(DateTime.now(), service))
+          }
+          old.foreach { service =>
+            if (!state.contains(service)) system.eventStream.publish(ServiceUnregistered(DateTime.now(), service))
+          }
           globalState.put(member.address, new util.HashSet[Service]())
           globalState.get(member.address).addAll(state)
         }

@@ -7,6 +7,7 @@ import akka.cluster.Cluster
 import akka.cluster.ClusterEvent._
 import com.distributedstuff.services.api.Service
 import com.distributedstuff.services.common.Logger
+import org.joda.time.DateTime
 
 import scala.util.{Failure, Success}
 
@@ -36,6 +37,8 @@ private[services] class StateManagerActor(is: ServiceDirectory) extends Actor {
 
 private[services] class ClusterListener(is: ServiceDirectory) extends Actor {
 
+  import collection.JavaConversions._
+
   val cluster = Cluster(context.system)
   implicit val ec = context.system.dispatcher
 
@@ -49,12 +52,20 @@ private[services] class ClusterListener(is: ServiceDirectory) extends Actor {
   def receive = {
     case MemberUp(member) => is.askEveryoneButMe()
     case UnreachableMember(member) => {
-      // TODO : unregister all services
+      Option(is.globalState.get(member.address)).map { services =>
+        services.foreach { service =>
+          is.system.eventStream.publish(ServiceUnregistered(DateTime.now(), service))
+        }
+      }
       is.globalState.remove(member.address)
       is.askEveryoneButMe()
     }
     case MemberRemoved(member, previousStatus) => {
-      // TODO : unregister all services
+      Option(is.globalState.get(member.address)).map { services =>
+        services.foreach { service =>
+          is.system.eventStream.publish(ServiceUnregistered(DateTime.now(), service))
+        }
+      }
       is.globalState.remove(member.address)
       is.askEveryoneButMe()
     }
