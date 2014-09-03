@@ -10,6 +10,7 @@ import com.typesafe.config.{ConfigFactory, Config, ConfigObject, ConfigValue}
 import scala.concurrent.{ExecutionContext, Future}
 
 object Services {
+  private val STANDARD_ROLE = "DISTRIBUTED-SERVICES-NODE"
   def apply() = new Services(IdGenerator.token(6))
   def apply(name: String) = new Services(name)
   def apply(configuration: Configuration) = new Services(IdGenerator.token(6), configuration)
@@ -18,11 +19,11 @@ object Services {
 
 class Services(name: String, configuration: Configuration = Configuration.load()) {
   // Tiny bootstrap piece to bind with internal API
-  def start(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = "DISTRIBUTED-SERVICES-NODE"): JoinableServices = {
+  def start(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = Services.STANDARD_ROLE): JoinableServices = {
     ServiceDirectory.start(name, host, port, role, configuration)
   }
 
-  def startAndJoin(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = "DISTRIBUTED-SERVICES-NODE"): ServicesApi = start(host, port, role).joinSelf()
+  def startAndJoin(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = Services.STANDARD_ROLE): ServicesApi = start(host, port, role).joinSelf()
   def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
     import collection.JavaConversions._
     val host = configuration.getString("services.boot.host").getOrElse(InetAddress.getLocalHost.getHostAddress)
@@ -52,7 +53,6 @@ trait JoinableServices {
 
 trait ServicesApi {
 
-  // TODO : search with meta searchable
   def stop(): Services
 
   def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service]
@@ -68,5 +68,7 @@ trait ServicesApi {
   def printState(): Unit
 
   // TODO : listener APIs
-  //def registerServiceListener(listener: ActorRef): Registration
+  // def registerServiceListener(listener: ActorRef): Registration
+
+  // TODO : search with meta searchable
 }
