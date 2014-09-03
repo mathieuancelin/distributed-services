@@ -30,10 +30,11 @@ class Services(name: String, configuration: Configuration = Configuration.load()
     val port = configuration.getInt("services.boot.port").getOrElse(Network.freePort)
     val role = configuration.getString("services.boot.role").getOrElse(role)
     val servicesToExpose = configuration.getObjectList("services.autoexpose").getOrElse(new java.util.ArrayList[ConfigObject]()).toList.map { obj =>
-      val name = obj.get("name").unwrapped().asInstanceOf[String] // mandatory
-      val url = obj.get("url").unwrapped().asInstanceOf[String]   // mandatory
-      val uid = obj.get("uid").unwrapped().asInstanceOf[String]   // mandatory
-      val version = Option(obj.get("version")).map(_.unwrapped().asInstanceOf[String])
+      val config = new Configuration(obj.toConfig)
+      val name = config.getString("name").get // mandatory
+      val url = config.getString("url").get   // mandatory
+      val uid = config.getString("uid").getOrElse(IdGenerator.uuid)
+      val version = config.getString("version")
       val roles = Option(obj.get("roles")).map(_.unwrapped().asInstanceOf[java.util.List[String]].toSeq).getOrElse(Seq[String]())
       Service(name = name, version = version, url = url, uid = uid, roles = roles)
     }

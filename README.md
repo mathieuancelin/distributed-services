@@ -92,3 +92,35 @@ serviceNode2.stop()
 serviceNode3.stop()
 
 ```
+
+You can also bootstrap the API only from configuration 
+
+```javascript
+
+services {
+    boot {
+        host = "127.0.0.1"
+        port = 9876
+    }
+    join {
+        seed = "192.168.1.34:7896"
+    }
+    autoexpose = [
+        {
+            name = "SERVICE1"
+            url = "http://192.168.1.23:9000/service1"
+            version = "2.34"
+            roles = ["master"]
+        },
+        {
+            name = "SERVICE2"
+            url = "akka.tcp://thesystem@192.168.1.23:7678/service2"
+            version = "1.0.1"
+        }
+    ]
+}
+```
+
+```scala
+val (services, registrations) = Services("node1").bootFromConfig()
+```
