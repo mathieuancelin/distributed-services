@@ -32,7 +32,7 @@ class Services(name: String, configuration: Configuration = Configuration.load()
     import collection.JavaConversions._
     val host = configuration.getString("services.boot.host").getOrElse(InetAddress.getLocalHost.getHostAddress)
     val port = configuration.getInt("services.boot.port").getOrElse(Network.freePort)
-    val role = configuration.getString("services.boot.role").getOrElse(role)
+    val role = configuration.getString("services.boot.role").getOrElse(Services.STANDARD_ROLE)
     val servicesToExpose = configuration.getObjectList("services.autoexpose").getOrElse(new java.util.ArrayList[ConfigObject]()).toList.map { obj =>
       val config = new Configuration(obj.toConfig)
       val name = config.getString("name").get // mandatory

@@ -115,6 +115,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     val addresses = scala.collection.immutable.Seq().++(seedNodes.:+(s"$address:$port").map { message =>
       message.split("\\:").toList match {
         case addr :: prt :: Nil => akka.actor.Address("akka.tcp", ServiceDirectory.systemName, addr, prt.toInt)
+        case _ => throw new RuntimeException(s"Bad akka address : $message")
       }
     }.toSeq)
     cluster.joinSeedNodes(addresses)

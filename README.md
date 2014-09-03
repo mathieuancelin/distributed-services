@@ -106,7 +106,7 @@ services {
     join {
         seed = "192.168.1.34:7896"
     }
-    autoexpose = [
+    autoexpose = [ // service description registered at startup
         {
             name = "SERVICE1"
             url = "http://192.168.1.23:9000/service1"
@@ -123,5 +123,6 @@ services {
 ```
 
 ```scala
-val (services, registrations) = Services.bootFromConfig()
+// just bootstrap the library and publish services from config file descriptors
+val (services, registrations) = Services.bootFromConfig() 
 ```

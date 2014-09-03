@@ -44,12 +44,8 @@ class HttpClientUsageSpec extends Specification with Tags {
     Future {
       val client = api.httpClient("SERVICE1")
       for (i <- 1 to 1000) {
-        try {
-          val json = Await.result(client.get().json, Duration(10, TimeUnit.SECONDS))
-          json
-        } catch {
-          case e => println("fuuuuuuu")
-        }
+        val json = Await.result(client.get().json, Duration(10, TimeUnit.SECONDS))
+        json
       }
     }
   }
