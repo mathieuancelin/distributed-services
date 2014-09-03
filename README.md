@@ -24,7 +24,7 @@ case class Service(
 )
 ```
 
-This project also offers a pluggable client API based on the directory with monitoring and load balancing (in case you have multiple instances of the same service)
+This project also offers a pluggable client API with monitoring and load balancing (in case you have multiple instances of the same service)
 
 ```scala
 
