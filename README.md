@@ -115,7 +115,7 @@ services {
         },
         {
             name = "SERVICE2"
-            url = "akka.tcp://thesystem@192.168.1.23:7678/service2"
+            url = "akka.tcp://thesystem@192.168.1.23:7678/user/service2"
             version = "1.0.1"
         }
     ]
