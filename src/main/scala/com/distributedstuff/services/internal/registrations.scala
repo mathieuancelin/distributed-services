@@ -3,6 +3,7 @@ package com.distributedstuff.services.internal
 import akka.actor.ActorRef
 import akka.agent.Agent
 import com.distributedstuff.services.api.{Registration, Service}
+import org.joda.time.DateTime
 
 class ServiceRegistration(is: ServiceDirectory, service: Service) extends Registration {
   def unregister() = {
@@ -14,10 +15,10 @@ class ServiceRegistration(is: ServiceDirectory, service: Service) extends Regist
     }
     is.askEveryoneButMe()
     is.tellEveryoneToAskMe()
-    //// TODO : tell listeners that service is gone
+    is.system.eventStream.publish(ServiceUnregistered(DateTime.now(), service))
   }
 }
 
-class ListenerRegistration(ref: ActorRef, agent: Agent[Set[ActorRef]]) extends Registration {
-  def unregister(): Unit = agent.alter(_.filterNot(_ == ref))
+class ListenerRegistration(f: () => Unit) extends Registration {
+  def unregister(): Unit = f()
 }

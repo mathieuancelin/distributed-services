@@ -49,10 +49,12 @@ private[services] class ClusterListener(is: ServiceDirectory) extends Actor {
   def receive = {
     case MemberUp(member) => is.askEveryoneButMe()
     case UnreachableMember(member) => {
+      // TODO : unregister all services
       is.globalState.remove(member.address)
       is.askEveryoneButMe()
     }
     case MemberRemoved(member, previousStatus) => {
+      // TODO : unregister all services
       is.globalState.remove(member.address)
       is.askEveryoneButMe()
     }

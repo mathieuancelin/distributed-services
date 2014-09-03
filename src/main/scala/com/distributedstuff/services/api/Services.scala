@@ -67,8 +67,7 @@ trait ServicesApi {
 
   def printState(): Unit
 
-  // TODO : listener APIs
-  // def registerServiceListener(listener: ActorRef): Registration
+  def registerServiceListener(listener: ActorRef): Registration
 
   // TODO : search with meta searchable
 }

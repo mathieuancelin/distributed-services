@@ -5,11 +5,13 @@ import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
 import akka.actor._
 import akka.cluster.Cluster
+import akka.remote.transport.ActorTransportAdapter.ListenerRegistered
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, MetricRegistry}
 import com.distributedstuff.services.api._
 import com.distributedstuff.services.common.{Configuration, Futures, Logger}
 import com.typesafe.config.ConfigFactory
+import org.joda.time.DateTime
 import play.api.libs.json.{JsString, JsArray, Json}
 
 import scala.concurrent.Future
@@ -76,6 +78,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     cluster.state.getMembers.toList.filter(_.address != cluster.selfAddress).foreach { member =>
       askState(member.address).andThen {
         case Success(state) => {
+          // TODO : handle lifecycle events here
           globalState.put(member.address, new util.HashSet[Service]())
           globalState.get(member.address).addAll(state)
         }
@@ -142,7 +145,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     askEveryoneButMe()
     tellEveryoneToAskMe()
     logger.trace(s"[$name] ${stateAsString()}")
-    // TODO : tell listeners that service is up
+    system.eventStream.publish(ServiceRegistered(DateTime.now(), service))
     new ServiceRegistration(this, service)
   }
 
@@ -168,4 +171,12 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   override def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(globalState, None, roles, version)
 
   override def printState(): Unit = println(stateAsString())
+
+  override def registerServiceListener(listener: ActorRef): Registration = {
+    system.eventStream.unsubscribe(listener, classOf[LifecycleEvent])
+    def unregister(): Unit = {
+      system.eventStream.unsubscribe(listener, classOf[LifecycleEvent])
+    }
+    new ListenerRegistration(unregister)
+  }
 }
