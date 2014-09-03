@@ -11,8 +11,20 @@ Nodes exchange messages periodicaly or on demand to discover services hosted by 
 This project does not aim at exposing distributed services. It just provides a way to let other nodes know that one particular node
 is hosting one particular type of service.
 
-This project also offers a pluggable client API based on the directory with monitoring and load balancing (in case you have multiple instances of the same service)
+A service is just the description of an actual service and can be materialized like :
 
+```scala
+case class Service(
+    uid: String,    // the ID of the service. Should be unique for each instance of services
+    name: String,   // the name of a service. Can be shared among service instances
+    url: String,    // the location of the service instance
+    metadata: Map[String, String], // Metadata about the services (can be empty). For user purpose only
+    roles: Seq[String],  // The possible roles of a service instance (can be empty)
+    version: Option[String] // The version of the service instance  (can be empty)
+)
+```
+
+This project also offers a pluggable client API based on the directory with monitoring and load balancing (in case you have multiple instances of the same service)
 
 ```scala
 
