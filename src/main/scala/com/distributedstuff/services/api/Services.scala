@@ -4,7 +4,8 @@ import java.net.InetAddress
 
 import akka.actor.ActorRef
 import com.distributedstuff.services.common.{IdGenerator, Configuration, Network}
-import com.distributedstuff.services.internal.ServiceDirectory
+import com.distributedstuff.services.internal.{ServiceRegistration, ServiceDirectory}
+import com.typesafe.config.{ConfigFactory, Config, ConfigObject, ConfigValue}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -16,17 +17,34 @@ object Services {
 }
 
 class Services(name: String, configuration: Configuration = Configuration.load()) {
-  // TODO : start from config
   // Tiny bootstrap piece to bind with internal API
   def start(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = "DISTRIBUTED-SERVICES-NODE"): JoinableServices = {
     ServiceDirectory.start(name, host, port, role, configuration)
   }
 
   def startAndJoin(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = "DISTRIBUTED-SERVICES-NODE"): ServicesApi = start(host, port, role).joinSelf()
+  def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
+    import collection.JavaConversions._
+    val host = configuration.getString("services.boot.host").getOrElse(InetAddress.getLocalHost.getHostAddress)
+    val port = configuration.getInt("services.boot.port").getOrElse(Network.freePort)
+    val role = configuration.getString("services.boot.role").getOrElse(role)
+    val servicesToExpose = configuration.getObjectList("services.autoexpose").getOrElse(new java.util.ArrayList[ConfigObject]()).toList.map { obj =>
+      val name = obj.get("name").unwrapped().asInstanceOf[String] // mandatory
+      val url = obj.get("url").unwrapped().asInstanceOf[String]   // mandatory
+      val uid = obj.get("uid").unwrapped().asInstanceOf[String]   // mandatory
+      val version = Option(obj.get("version")).map(_.unwrapped().asInstanceOf[String])
+      val roles = Option(obj.get("roles")).map(_.unwrapped().asInstanceOf[java.util.List[String]].toSeq).getOrElse(Seq[String]())
+      Service(name = name, version = version, url = url, uid = uid, roles = roles)
+    }
+    val seed = configuration.getString("services.join.seed")
+    val joinable = start(host, port, role)
+    val services = seed.map(seed => joinable.join(seed)).getOrElse(joinable.joinSelf())
+    val registered = servicesToExpose.map(service => services.registerService(service))
+    (services, registered)
+  }
 }
 
 trait JoinableServices {
-  // TODO : join from config
   def join(addr: String): ServicesApi
   def join(addr: Seq[String]): ServicesApi
   def joinSelf(): ServicesApi
@@ -49,5 +67,6 @@ trait ServicesApi {
 
   def printState(): Unit
 
+  // TODO : listener APIs
   //def registerServiceListener(listener: ActorRef): Registration
 }
