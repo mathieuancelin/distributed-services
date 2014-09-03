@@ -15,6 +15,10 @@ object Services {
   def apply(name: String) = new Services(name)
   def apply(configuration: Configuration) = new Services(IdGenerator.token(6), configuration)
   def apply(name: String, configuration: Configuration) = new Services(name, configuration)
+  def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
+    val name = configuration.getString("services.nodename").get
+    new Services(name, configuration).bootFromConfig(configuration)
+  }
 }
 
 class Services(name: String, configuration: Configuration = Configuration.load()) {

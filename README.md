@@ -98,6 +98,7 @@ You can also bootstrap the API only from configuration
 ```javascript
 
 services {
+    nodename = "node1"
     boot {
         host = "127.0.0.1"
         port = 9876
@@ -122,5 +123,5 @@ services {
 ```
 
 ```scala
-val (services, registrations) = Services("node1").bootFromConfig()
+val (services, registrations) = Services.bootFromConfig()
 ```
