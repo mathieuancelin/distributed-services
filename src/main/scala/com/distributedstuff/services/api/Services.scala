@@ -124,6 +124,9 @@ trait JoinableServices {
   def joinSelf(): ServicesApi
 }
 
+/**
+ * The main API to manipulation service desriptions registered in the cluster.
+ */
 trait ServicesApi {
 
   /**
