@@ -44,7 +44,7 @@ object Services {
     new Services(name, configuration, None).bootFromConfig(configuration)
   }
 
-  def bootFromConfig(configuration: Configuration = Configuration.load(), metrics: MetricRegistry): (ServicesApi, List[Registration]) = {
+  def bootFromConfig(configuration: Configuration, metrics: MetricRegistry): (ServicesApi, List[Registration]) = {
     val name = configuration.getString("services.nodename").get
     new Services(name, configuration, Some(metrics)).bootFromConfig(configuration)
   }
