@@ -22,7 +22,7 @@ private[services] object ServiceDirectory {
 
   Logger.configure()
 
-  def start(name: String, address: String, port: Int, role: String, configuration: Configuration): ServiceDirectory = {
+  def start(name: String, address: String, port: Int, role: String, configuration: Configuration, metrics: Option[MetricRegistry]): ServiceDirectory = {
     val configBuilder = new StringBuilder()
     var config = configuration.underlying.getConfig(systemName)
     val fallback = configuration.underlying.getConfig(systemName)
@@ -33,15 +33,15 @@ private[services] object ServiceDirectory {
     Logger("InternalServices").debug(s"Akka remoting will be bound to akka.tcp://$systemName@$address:$port")
     val system = ActorSystem(systemName, config)
     val cluster = Cluster(system)
-    new ServiceDirectory(name, configuration, system, cluster, address, port)
+    new ServiceDirectory(name, configuration, system, metrics, cluster, address, port)
   }
 }
 
-private[services] class ServiceDirectory(val name: String, val configuration: Configuration, val system: ActorSystem, val cluster: Cluster, address: String, port: Int) extends ServicesApi with JoinableServices {
+private[services] class ServiceDirectory(val name: String, val configuration: Configuration, val system: ActorSystem, val m: Option[MetricRegistry], val cluster: Cluster, address: String, port: Int) extends ServicesApi with JoinableServices {
 
   implicit val ec = system.dispatcher
   val logger = Logger("InternalServices")
-  val metrics = new MetricRegistry
+  val metrics = m.getOrElse(new MetricRegistry)
   val globalState = new ConcurrentHashMap[Address, util.Set[Service]]()
   val jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
   val stateManager = system.actorOf(Props(classOf[StateManagerActor], this), "StateManagerActor")

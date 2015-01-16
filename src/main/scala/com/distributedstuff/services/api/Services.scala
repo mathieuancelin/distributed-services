@@ -67,7 +67,7 @@ class Services(name: String, configuration: Configuration = Configuration.load()
    * @return
    */
   def start(host: String = InetAddress.getLocalHost.getHostAddress, port: Int = Network.freePort, role: String = Services.STANDARD_ROLE): JoinableServices = {
-    ServiceDirectory.start(name, host, port, role, configuration)
+    ServiceDirectory.start(name, host, port, role, configuration, metrics)
   }
 
   /**
@@ -173,7 +173,7 @@ trait ServicesApi {
    * @param roles roles of the service
    * @param version version of the service
    */
-  def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int): Client
+  def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5): Client
 
   /**
    * Register a new service description in the cluster

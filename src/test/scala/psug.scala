@@ -69,8 +69,9 @@ object Service2Client  {
 
   def isValidUser(email: String, password: String): Future[Option[(Boolean, User)]] = {
     client.ask[UserValidResponse](UserValidRequest(email, password)).map {
-      case UserValidResponse(_, None) => None
-      case UserValidResponse(valid, Some(user)) => Some((valid, user))
+      case Some(UserValidResponse(_, None)) => None
+      case Some(UserValidResponse(valid, Some(user))) => Some((valid, user))
+      case _ => None
     }
   }
 }

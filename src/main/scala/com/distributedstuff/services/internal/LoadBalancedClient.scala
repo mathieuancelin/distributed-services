@@ -6,6 +6,7 @@ import com.distributedstuff.services.api.{Service, Client}
 import com.distributedstuff.services.common.{Backoff, Futures}
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success}
 
 private[services] class LoadBalancedClient(name: String, times: Int, is: ServiceDirectory) extends Client {
 
@@ -23,11 +24,37 @@ private[services] class LoadBalancedClient(name: String, times: Int, is: Service
 
   override def call[T](f: (Service) => T)(implicit ec: ExecutionContext): Future[T] = {
     implicit val sched = is.system.scheduler
-    Backoff.retry(times)(bestService.map(s => Future.successful(f(s))).getOrElse(Future.failed(new NoSuchElementException)))
+    Backoff.retry(times) {
+      is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
+      val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+      bestService.map(s => Future.successful(f(s))).getOrElse(Future.failed(new NoSuchElementException)).andThen {
+        case Success(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.success").mark()
+        }
+        case Failure(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
+        }
+      }
+    }
   }
 
   override def callM[T](f: (Service) => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     implicit val sched = is.system.scheduler
-    Backoff.retry(times)(bestService.map(s => f(s)).getOrElse(Future.failed(new NoSuchElementException)))
+    Backoff.retry(times) {
+      is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
+      val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+      bestService.map(s => f(s)).getOrElse(Future.failed(new NoSuchElementException)).andThen {
+        case Success(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.success").mark()
+        }
+        case Failure(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
+        }
+      }
+    }
   }
 }
