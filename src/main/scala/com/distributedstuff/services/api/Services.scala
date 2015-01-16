@@ -3,6 +3,7 @@ package com.distributedstuff.services.api
 import java.net.InetAddress
 
 import akka.actor.ActorRef
+import com.codahale.metrics.MetricRegistry
 import com.distributedstuff.services.common.{IdGenerator, Configuration, Network}
 import com.distributedstuff.services.internal.{ServiceRegistration, ServiceDirectory}
 import com.typesafe.config.{ConfigFactory, Config, ConfigObject, ConfigValue}
@@ -18,25 +19,33 @@ object Services {
   /**
    * @return a new Services instance
    */
-  def apply() = new Services(IdGenerator.token(6))
+  def apply() = new Services(IdGenerator.token(6), Configuration.load(), None)
+  def apply(metrics: MetricRegistry) = new Services(IdGenerator.token(6), Configuration.load(), Some(metrics))
   /**
    * @return a new Services instance
    */
   def apply(name: String) = new Services(name)
+  def apply(name: String, metrics: MetricRegistry) = new Services(name, Configuration.load(), Some(metrics))
   /**
    * @return a new Services instance
    */
-  def apply(configuration: Configuration) = new Services(IdGenerator.token(6), configuration)
+  def apply(configuration: Configuration) = new Services(IdGenerator.token(6), configuration, None)
+  def apply(configuration: Configuration, metrics: MetricRegistry) = new Services(IdGenerator.token(6), configuration, Some(metrics))
   /**
    * @return a new Services instance
    */
-  def apply(name: String, configuration: Configuration) = new Services(name, configuration)
+  def apply(name: String, configuration: Configuration) = new Services(name, configuration, None)
+  def apply(name: String, configuration: Configuration, metrics: MetricRegistry) = new Services(name, configuration, Some(metrics))
   /**
    * @return a new Services instance based on the configuration
    */
   def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
+    bootFromConfig(configuration, None[MetricRegistry])
+  }
+
+  def bootFromConfig(configuration: Configuration = Configuration.load(), metrics: MetricRegistry): (ServicesApi, List[Registration]) = {
     val name = configuration.getString("services.nodename").get
-    new Services(name, configuration).bootFromConfig(configuration)
+    new Services(name, configuration, Some(metrics)).bootFromConfig(configuration)
   }
 }
 
@@ -46,7 +55,7 @@ object Services {
  * @param name name of the Services node
  * @param configuration configuration of the node
  */
-class Services(name: String, configuration: Configuration = Configuration.load()) {
+class Services(name: String, configuration: Configuration = Configuration.load(), metrics: Option[MetricRegistry] = None) {
 
   /**
    * Start the current node.Tiny bootstrap piece to bind with internal API.
