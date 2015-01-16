@@ -10,7 +10,7 @@ import com.typesafe.config._
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.{Future, ExecutionContextExecutorService, Promise, ExecutionContext}
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.{Random, Try, Failure, Success}
 import scala.util.control.NonFatal
 
@@ -191,6 +191,30 @@ class Configuration(val underlying: Config) {
 
   def reportError(path: String, message: String, e: Option[Throwable] = None): RuntimeException = {
     new RuntimeException(message, e.getOrElse(new RuntimeException))
+  }
+}
+
+object Backoff {
+
+  private[this] def retryPromise[T](times: Int, wait: Int, promise: Promise[T], failure: Option[Throwable], f: => Future[T], ec: ExecutionContext, scheduler: Scheduler): Unit = {
+    (times, failure) match {
+      case (0, Some(e)) => promise.tryFailure(e)
+      case (0, None) => promise.tryFailure(new RuntimeException("Failure, but lost track of exception :-("))
+      case (i, _) => f.onComplete {
+        case Success(t) => promise.trySuccess(t)
+        case Failure(e) => {
+          val newWait = if (wait == 0) 1 else wait + wait
+          Futures.timeout(retryPromise[T](times - 1, newWait, promise, Some(e), f, ec, scheduler),
+            Duration(newWait, TimeUnit.MILLISECONDS), scheduler)(ec)
+        }
+      }(ec)
+    }
+  }
+
+  def retry[T](times: Int)(f: => Future[T])(implicit ec: ExecutionContext, scheduler: Scheduler): Future[T] = {
+    val promise = Promise[T]()
+    retryPromise[T](times, 0, promise, None, f, ec, scheduler)
+    promise.future
   }
 }
 
