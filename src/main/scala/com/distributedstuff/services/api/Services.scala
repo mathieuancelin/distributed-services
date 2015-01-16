@@ -163,7 +163,7 @@ trait ServicesApi {
    * @param roles roles of the service
    * @param version version of the service
    */
-  def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Client
+  def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int): Client
 
   /**
    * Register a new service description in the cluster

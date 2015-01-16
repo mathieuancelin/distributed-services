@@ -2,13 +2,13 @@ package com.distributedstuff.services.clients
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{AddressFromURIString, RootActorPath, ActorRef, ActorSystem}
+import akka.actor.ActorRef
 import akka.util.Timeout
 import com.distributedstuff.services.api.{Client, ServicesApi}
 import com.distributedstuff.services.common.http.{Http, RequestHolder}
-import com.distributedstuff.services.internal.{ServiceDirectory, LoadBalancedClient}
+import com.distributedstuff.services.internal.{LoadBalancedClient, ServiceDirectory}
 
-import scala.concurrent.{Future, ExecutionContext}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
 package object httpsupport {
@@ -16,8 +16,8 @@ package object httpsupport {
   type HttpClient = RequestHolder
 
   implicit final class HttpClientSupport(services: ServicesApi) {
-    def httpClient(name: String, roles: Seq[String] = Seq(), version: Option[String] = None)(implicit ec: ExecutionContext): HttpClient = {
-      val client = services.client(name, roles, version)
+    def httpClient(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5)(implicit ec: ExecutionContext): HttpClient = {
+      val client = services.client(name, roles, version, retry)
       Http.empty().withApiClient(client.asInstanceOf[LoadBalancedClient]).withExecutionContext(ec)
     }
   }
@@ -26,8 +26,8 @@ package object httpsupport {
 package object akkasupport {
 
   implicit final class AkkaClientSupport(services: ServicesApi) {
-    def akkaClient(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, timeout: Timeout = Timeout(10, TimeUnit.SECONDS)): AkkaClient = {
-      val client = services.client(name, roles, version)
+    def akkaClient(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5, timeout: Timeout = Timeout(10, TimeUnit.SECONDS)): AkkaClient = {
+      val client = services.client(name, roles, version, retry)
       new AkkaClient(name, roles, version, services, timeout, client.asInstanceOf[LoadBalancedClient])
     }
   }

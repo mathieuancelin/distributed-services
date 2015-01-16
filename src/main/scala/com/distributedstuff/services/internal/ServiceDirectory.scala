@@ -5,18 +5,17 @@ import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
 import akka.actor._
 import akka.cluster.Cluster
-import akka.remote.transport.ActorTransportAdapter.ListenerRegistered
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, MetricRegistry}
 import com.distributedstuff.services.api._
-import com.distributedstuff.services.common.{IdGenerator, Configuration, Futures, Logger}
-import com.typesafe.config.{ConfigObject, ConfigFactory}
+import com.distributedstuff.services.common.{Configuration, Futures, IdGenerator, Logger}
+import com.typesafe.config.{ConfigFactory, ConfigObject}
 import org.joda.time.DateTime
-import play.api.libs.json.{JsString, JsArray, Json}
+import play.api.libs.json.{JsArray, JsString, Json}
 
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
-import scala.util.{Try, Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 private[services] object ServiceDirectory {
   private[internal] val systemName = "distributed-services"
@@ -55,7 +54,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   def stateAsString() = {
     var json = Json.obj()
-    import collection.JavaConversions._
+    import scala.collection.JavaConversions._
     for (e <- globalState.entrySet()) {
       var services = Json.arr()
       for (service <- e.getValue) {
@@ -157,7 +156,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   }
 
   private[this] def merge(a: ConcurrentHashMap[Address, util.Set[Service]], name: Option[String], roles: Seq[String], version: Option[String]): Set[Service] = {
-    import collection.JavaConversions._
+    import scala.collection.JavaConversions._
     a.values().toList.flatMap(_.toList).filter(s => name.getOrElse(s.name) == s.name).filter { service =>
       (roles, version) match {
         case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
@@ -169,7 +168,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     }.toSet[Service]
   }
 
-  override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Client = new LoadBalancedClient(name, this)
+  override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5): Client = new LoadBalancedClient(name, retry, this)
 
   override def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(globalState, Some(name), roles, version)
 
@@ -188,7 +187,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   }
 
   override def exposeFromConfig() = {
-    import collection.JavaConversions._
+    import scala.collection.JavaConversions._
     val servicesToExpose = configuration.getObjectList("services.autoexpose").getOrElse(new java.util.ArrayList[ConfigObject]()).toList.map { obj =>
       val config = new Configuration(obj.toConfig)
       val name = config.getString("name").get // mandatory
