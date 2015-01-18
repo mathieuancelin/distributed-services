@@ -52,6 +52,8 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   askEveryoneButMe()
   tellEveryoneToAskMe()
 
+  override def actors(): ActorSystem = system
+
   def stateAsString() = {
     var json = Json.obj()
     import scala.collection.JavaConversions._

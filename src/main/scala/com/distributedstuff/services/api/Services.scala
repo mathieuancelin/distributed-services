@@ -2,7 +2,7 @@ package com.distributedstuff.services.api
 
 import java.net.InetAddress
 
-import akka.actor.ActorRef
+import akka.actor.{ActorSystem, ActorRef}
 import com.codahale.metrics.MetricRegistry
 import com.distributedstuff.services.common.{IdGenerator, Configuration, Network}
 import com.distributedstuff.services.internal.{ServiceRegistration, ServiceDirectory}
@@ -196,4 +196,6 @@ trait ServicesApi {
    * @return the list of registration
    */
   def exposeFromConfig(): List[Registration]
+
+  def actors(): ActorSystem
 }
