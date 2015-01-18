@@ -178,7 +178,7 @@ trait ServicesApi {
   /**
    * Register a new service description in the cluster
    * @param service the new service description
-   * @return a regisration object to be able to unregister the service at any time
+   * @return a registration object to be able to unregister the service at any time
    */
   def registerService(service: Service): Registration
 
@@ -187,7 +187,7 @@ trait ServicesApi {
   /**
    * Register a service listener to be informed when a new service arrives and leaves the cluster
    * @param listener actor ref that is a listener of LifecycleEvent
-   * @return a regisration object to be able to unregister the listener at any time
+   * @return a registration object to be able to unregister the listener at any time
    */
   def registerServiceListener(listener: ActorRef): Registration
 
