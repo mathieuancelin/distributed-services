@@ -41,16 +41,25 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   implicit val ec = system.dispatcher
   val logger = Logger("InternalServices")
-  val metrics = m.getOrElse(new MetricRegistry)
   val globalState = new ConcurrentHashMap[Address, util.Set[Service]]()
-  val jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
   val stateManager = system.actorOf(Props(classOf[StateManagerActor], this), "StateManagerActor")
   val clusterListener = system.actorOf(Props(classOf[ClusterListener], this), "ClusterListener")
 
+  var metrics = m.getOrElse(new MetricRegistry)
+  var jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
   jmxRegistry.start()
 
   askEveryoneButMe()
   tellEveryoneToAskMe()
+
+
+  override def useMetrics(m: MetricRegistry): ServicesApi = {
+    jmxRegistry.stop()
+    metrics = m
+    jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
+    jmxRegistry.start()
+    this
+  }
 
   override def actors(): ActorSystem = system
 

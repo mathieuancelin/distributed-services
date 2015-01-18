@@ -198,4 +198,6 @@ trait ServicesApi {
   def exposeFromConfig(): List[Registration]
 
   def actors(): ActorSystem
+
+  def useMetrics(metrics: MetricRegistry): ServicesApi
 }
