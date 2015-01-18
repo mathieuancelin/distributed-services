@@ -1,9 +1,10 @@
 package com.distributedstuff.services.internal
 
 import java.util
+import java.util.Collections
 
 import akka.actor.Actor
-import akka.cluster.Cluster
+import akka.cluster.{Member, Cluster}
 import akka.cluster.ClusterEvent._
 import com.distributedstuff.services.api.Service
 import com.distributedstuff.services.common.Logger
@@ -49,9 +50,27 @@ private[services] class ClusterListener(is: ServiceDirectory) extends Actor {
 
   override def postStop(): Unit = cluster.unsubscribe(self)
 
+  def members(): Seq[Member] = cluster.state.members.toSeq.filterNot(unreachable.contains)
+  val unreachable = Collections.synchronizedSet(new util.HashSet[Member]())
+
+  private def displayState() = {
+    Logger("CLIENTS_WATCHER").debug(s"----------------------------------------------------------------------------")
+    Logger("CLIENTS_WATCHER").debug(s"Cluster members are : ")
+    members().foreach { member =>
+      Logger("CLIENTS_WATCHER").debug(s"==> ${member.address} :: ${member.getRoles} => ${member.status}")
+    }
+    Logger("CLIENTS_WATCHER").debug(s"----------------------------------------------------------------------------")
+  }
+
   def receive = {
-    case MemberUp(member) => is.askEveryoneButMe()
+    case MemberUp(member) => {
+      displayState()
+      is.askEveryoneButMe()
+    }
     case UnreachableMember(member) => {
+      Logger("CLIENTS_WATCHER").debug(s"$member is unreachable")
+      unreachable.add(member)
+      Logger("CLIENTS_WATCHER").debug(s"blacklist : ${unreachable}")
       Option(is.globalState.get(member.address)).map { services =>
         services.foreach { service =>
           is.system.eventStream.publish(ServiceUnregistered(DateTime.now(), service))
@@ -59,6 +78,13 @@ private[services] class ClusterListener(is: ServiceDirectory) extends Actor {
       }
       is.globalState.remove(member.address)
       is.askEveryoneButMe()
+      displayState()
+    }
+    case ReachableMember(member) => {
+      Logger("CLIENTS_WATCHER").debug(s"$member is reachable again")
+      unreachable.remove(member)
+      Logger("CLIENTS_WATCHER").debug(s"blacklist : ${unreachable}")
+      displayState()
     }
     case MemberRemoved(member, previousStatus) => {
       Option(is.globalState.get(member.address)).map { services =>
@@ -68,6 +94,7 @@ private[services] class ClusterListener(is: ServiceDirectory) extends Actor {
       }
       is.globalState.remove(member.address)
       is.askEveryoneButMe()
+      displayState()
     }
     case _: MemberEvent =>
   }
