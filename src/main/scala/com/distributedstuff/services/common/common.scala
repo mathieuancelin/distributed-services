@@ -27,114 +27,136 @@ object Network {
 
 trait LoggerLike {
 
-  val logger: org.slf4j.Logger
+  val logger: String //org.slf4j.Logger
 
-  def isTraceEnabled = logger.isTraceEnabled
-
-  def isDebugEnabled = logger.isDebugEnabled
-
-  def isInfoEnabled = logger.isInfoEnabled
-
-  def isWarnEnabled = logger.isWarnEnabled
-
-  def isErrorEnabled = logger.isErrorEnabled
+  def isTraceEnabled = false //logger.isTraceEnabled
+  def isDebugEnabled = true //logger.isDebugEnabled
+  def isInfoEnabled =  true //logger.isInfoEnabled
+  def isWarnEnabled =  true //logger.isWarnEnabled
+  def isErrorEnabled = true //logger.isErrorEnabled
 
   def trace(message: => String) {
-    if (logger.isTraceEnabled) logger.trace(message)
+    if (isTraceEnabled) {
+      println(s"[$logger][TRACE] $message")
+    }
   }
 
   def trace(message: => String, error: => Throwable) {
-    if (logger.isTraceEnabled) logger.trace(message, error)
+    if (isTraceEnabled) {
+      println(s"[$logger][TRACE] $message")
+      error.printStackTrace()
+    }
   }
 
   def debug(message: => String) {
-    if (logger.isDebugEnabled) logger.debug(message)
+    if (isDebugEnabled) {
+      println(s"[$logger][DEBUG] $message")
+    }
   }
 
   def debug(message: => String, error: => Throwable) {
-    if (logger.isDebugEnabled) logger.debug(message, error)
+    if (isDebugEnabled) {
+      println(s"[$logger][DEBUG] $message")
+      error.printStackTrace()
+    }
   }
 
   def info(message: => String) {
-    if (logger.isInfoEnabled) logger.info(message)
+    if (isInfoEnabled) {
+      println(s"[$logger][INFO] $message")
+    }
   }
 
   def info(message: => String, error: => Throwable) {
-    if (logger.isInfoEnabled) logger.info(message, error)
+    if (isInfoEnabled) {
+      println(s"[$logger][INFO] $message")
+      error.printStackTrace()
+    }
   }
 
   def warn(message: => String) {
-    if (logger.isWarnEnabled) logger.warn(message)
+    if (isWarnEnabled) {
+      println(s"[$logger][WARN] $message")
+    }
   }
 
   def warn(message: => String, error: => Throwable) {
-    if (logger.isWarnEnabled) logger.warn(message, error)
+    if (isWarnEnabled) {
+      println(s"[$logger][WARN] $message")
+      error.printStackTrace()
+    }
   }
 
   def error(message: => String) {
-    if (logger.isErrorEnabled) logger.error(message)
+    if (isErrorEnabled) {
+      println(s"[$logger][ERROR] $message")
+    }
   }
 
   def error(message: => String, error: => Throwable) {
-    if (logger.isErrorEnabled) logger.error(message, error)
+    if (isErrorEnabled) {
+      println(s"[$logger][ERROR] $message")
+      error.printStackTrace()
+    }
   }
 
   def apply(name: String): LoggerLike
   def apply[T](clazz: Class[T]): LoggerLike
 }
 
-class Logger(val logger: org.slf4j.Logger) extends LoggerLike  {
-  def apply(name: String): LoggerLike = new Logger(LoggerFactory.getLogger(name))
-  def apply[T](clazz: Class[T]): LoggerLike = new Logger(LoggerFactory.getLogger(clazz))
+class Logger(val logger: String/*org.slf4j.Logger*/) extends LoggerLike  {
+  def apply(name: String): LoggerLike = new Logger(name)//LoggerFactory.getLogger(name))
+  def apply[T](clazz: Class[T]): LoggerLike = new Logger(clazz.getName)//LoggerFactory.getLogger(clazz))
 }
 
 object Logger extends LoggerLike {
-  lazy val logger = LoggerFactory.getLogger("Distributed-Map")
-  def apply(name: String): LoggerLike = new Logger(LoggerFactory.getLogger(name))
-  def apply[T](clazz: Class[T]): LoggerLike = new Logger(LoggerFactory.getLogger(clazz))
+  val logger = "Distributed-Map" //lazy val logger = LoggerFactory.getLogger("Distributed-Map")
+  def apply(name: String): LoggerLike = new Logger(name)//LoggerFactory.getLogger(name))
+  def apply[T](clazz: Class[T]): LoggerLike = new Logger(clazz.getName)//LoggerFactory.getLogger(clazz))
 
   def configure(): LoggerLike = {
-    {
-      import java.util.logging._
-      Option(java.util.logging.Logger.getLogger("")).map { root =>
-        root.setLevel(java.util.logging.Level.FINEST)
-        root.getHandlers.foreach(root.removeHandler(_))
-      }
-    }
-    {
-      import org.slf4j._
-      import ch.qos.logback.classic.joran._
-      import ch.qos.logback.core.util._
-      import ch.qos.logback.classic._
-      try {
-        val ctx = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
-        val configurator = new JoranConfigurator
-        configurator.setContext(ctx)
-        ctx.reset()
-        try {
-          val configResource =
-            Option(System.getProperty("logger.resource"))
-              .map(s => if (s.startsWith("/")) s.drop(1) else s)
-              .map(r => Option(this.getClass.getClassLoader.getResource(r))
-              .getOrElse(new java.net.URL("file:///" + System.getProperty("logger.resource")))
-              ).orElse {
-              Option(System.getProperty("logger.file")).map(new java.io.File(_).toURI.toURL)
-            }.orElse {
-              Option(System.getProperty("logger.url")).map(new java.net.URL(_))
-            }.orElse {
-              Option(this.getClass.getClassLoader.getResource("application-logger.xml"))
-                .orElse(Option(this.getClass.getClassLoader.getResource("logger.xml")))
-            }
-          configResource.foreach { url => configurator.doConfigure(url) }
-        } catch {
-          case NonFatal(e) => e.printStackTrace()
-        }
-        StatusPrinter.printIfErrorsOccured(ctx)
-      } catch {
-        case NonFatal(_) =>
-      }
-      this
-    }
+    //{
+    //  import java.util.logging._
+    //  Option(java.util.logging.Logger.getLogger("")).map { root =>
+    //    root.setLevel(java.util.logging.Level.FINEST)
+    //    root.getHandlers.foreach(root.removeHandler(_))
+    //  }
+    //}
+    //{
+    //  import org.slf4j._
+    //  import ch.qos.logback.classic.joran._
+    //  import ch.qos.logback.core.util._
+    //  import ch.qos.logback.classic._
+    //  try {
+    //    val ctx = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
+    //    val configurator = new JoranConfigurator
+    //    configurator.setContext(ctx)
+    //    ctx.reset()
+    //    try {
+    //      val configResource =
+    //        Option(System.getProperty("logger.resource"))
+    //          .map(s => if (s.startsWith("/")) s.drop(1) else s)
+    //          .map(r => Option(this.getClass.getClassLoader.getResource(r))
+    //          .getOrElse(new java.net.URL("file:///" + System.getProperty("logger.resource")))
+    //          ).orElse {
+    //          Option(System.getProperty("logger.file")).map(new java.io.File(_).toURI.toURL)
+    //        }.orElse {
+    //          Option(System.getProperty("logger.url")).map(new java.net.URL(_))
+    //        }.orElse {
+    //          Option(this.getClass.getClassLoader.getResource("application-logger.xml"))
+    //            .orElse(Option(this.getClass.getClassLoader.getResource("logger.xml")))
+    //        }
+    //      configResource.foreach { url => configurator.doConfigure(url) }
+    //    } catch {
+    //      case NonFatal(e) => e.printStackTrace()
+    //    }
+    //    StatusPrinter.printIfErrorsOccured(ctx)
+    //  } catch {
+    //    case NonFatal(_) =>
+    //  }
+    //  this
+    //}
+    this
   }
 }
 

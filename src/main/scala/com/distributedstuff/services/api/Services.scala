@@ -4,7 +4,7 @@ import java.net.InetAddress
 
 import akka.actor.{ActorSystem, ActorRef}
 import com.codahale.metrics.MetricRegistry
-import com.distributedstuff.services.common.{IdGenerator, Configuration, Network}
+import com.distributedstuff.services.common.{Logger, IdGenerator, Configuration, Network}
 import com.distributedstuff.services.internal.{ServiceRegistration, ServiceDirectory}
 import com.typesafe.config.{ConfigFactory, Config, ConfigObject, ConfigValue}
 
@@ -103,9 +103,11 @@ class Services(name: String, configuration: Configuration = Configuration.load()
     val host = configuration.getString("services.boot.host").getOrElse(InetAddress.getLocalHost.getHostAddress)
     val port = configuration.getInt("services.boot.port").getOrElse(Network.freePort)
     val role = configuration.getString("services.boot.role").getOrElse(Services.STANDARD_ROLE)
-    val seed = configuration.getString("services.join.seed")
+    val seed = configuration.getString("services.boot.seed")
+    Logger("SERVICES").info(s"Starting system $role@$host:$port")
     val joinable = start(host, port, role)
-    seed.map(seed => joinable.join(seed)).getOrElse(joinable.joinSelf())
+    Logger("SERVICES").info(s"Joining seed $seed")
+    seed.map(s => joinable.join(s)).getOrElse(joinable.joinSelf())
   }
 }
 
