@@ -93,13 +93,13 @@ class HttpClientUsageSpec extends Specification with Tags {
       counter2.get() should be_>(0)
       counter3.get() should be_>(0)
 
-      counter1.get() should be_>(900)
-      counter2.get() should be_>(900)
-      counter3.get() should be_>(900)
+      counter1.get() should be_>(800)
+      counter2.get() should be_>(800)
+      counter3.get() should be_>(800)
 
-      counter1.get() should be_<(1100)
-      counter2.get() should be_<(1100)
-      counter3.get() should be_<(1100)
+      counter1.get() should be_<(1200)
+      counter2.get() should be_<(1200)
+      counter3.get() should be_<(1200)
       success
     }
 

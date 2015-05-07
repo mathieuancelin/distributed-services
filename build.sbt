@@ -7,13 +7,13 @@ name := "distributed-services"
 
 version := "1.0-SNAPSHOT"
 
-scalaVersion := "2.11.1"
+scalaVersion := "2.11.6"
 
-libraryDependencies += "com.typesafe.akka"         %% "akka-actor"                        % "2.3.3"
+resolvers += "patriknw at bintray" at "http://dl.bintray.com/patriknw/maven"
 
-libraryDependencies += "com.typesafe.akka"         %% "akka-cluster"                      % "2.3.3"
+libraryDependencies += "com.github.patriknw" %% "akka-data-replication" % "0.11"
 
-libraryDependencies += "com.typesafe.akka"         %% "akka-agent"                        % "2.3.3"
+libraryDependencies += "com.typesafe.akka" % "akka-http-scala-experimental_2.11" % "1.0-RC2"
 
 libraryDependencies += "com.typesafe.play"         %% "play-json"                         % "2.3.0"
 

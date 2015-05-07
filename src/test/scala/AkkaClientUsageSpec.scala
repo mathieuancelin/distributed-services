@@ -4,7 +4,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.util.Timeout
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
-import com.distributedstuff.services.clients.akkasupport.AkkaClientSupport
+import com.distributedstuff.services.akkasupport.AkkaClientSupport
 import com.distributedstuff.services.common.Reference
 import com.google.common.collect.Lists
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
@@ -98,13 +98,13 @@ class AkkaClientUsageSpec extends Specification with Tags {
       counter2.get() should be_>(0)
       counter3.get() should be_>(0)
 
-      counter1.get() should be_>(900)
-      counter2.get() should be_>(900)
-      counter3.get() should be_>(900)
+      counter1.get() should be_>(800)
+      counter2.get() should be_>(800)
+      counter3.get() should be_>(800)
 
-      counter1.get() should be_<(1100)
-      counter2.get() should be_<(1100)
-      counter3.get() should be_<(1100)
+      counter1.get() should be_<(1200)
+      counter2.get() should be_<(1200)
+      counter3.get() should be_<(1200)
       success
     }
 

@@ -1,14 +1,15 @@
 package com.distributedstuff.services.api
 
 import java.net.InetAddress
+import java.util.concurrent.TimeUnit
 
-import akka.actor.{ActorSystem, ActorRef}
+import akka.actor.{ActorRef, ActorSystem}
 import com.codahale.metrics.MetricRegistry
-import com.distributedstuff.services.common.{Logger, IdGenerator, Configuration, Network}
-import com.distributedstuff.services.internal.{ServiceRegistration, ServiceDirectory}
-import com.typesafe.config.{ConfigFactory, Config, ConfigObject, ConfigValue}
+import com.distributedstuff.services.common.{Configuration, IdGenerator, Logger, Network}
+import com.distributedstuff.services.internal.ServiceDirectory
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 /**
  * Bootstrap API
@@ -151,7 +152,8 @@ trait ServicesApi {
    * @param roles roles of the service
    * @param version version of the service
    */
-  def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service]
+  def asyncAllServices(roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]]
+  def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = Await.result(asyncAllServices(roles, version), Duration(10, TimeUnit.SECONDS))
 
   /**
    * Find all services in the cluster that match name and query
@@ -159,7 +161,8 @@ trait ServicesApi {
    * @param roles roles of the service
    * @param version version of the service
    */
-  def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service]
+  def asyncServices(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]]
+  def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = Await.result(asyncServices(name, roles, version), Duration(10, TimeUnit.SECONDS))
 
   /**
    * Find the first service in the cluster that match name and query
@@ -167,7 +170,8 @@ trait ServicesApi {
    * @param roles roles of the service
    * @param version version of the service
    */
-  def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service]
+  def asyncService(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Future[Option[Service]]
+  def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service] = Await.result(asyncService(name, roles, version), Duration(10, TimeUnit.SECONDS))
 
   /**
    * Find the first service in the cluster that match name and query
@@ -182,9 +186,10 @@ trait ServicesApi {
    * @param service the new service description
    * @return a registration object to be able to unregister the service at any time
    */
-  def registerService(service: Service): Registration
+  def asyncRegisterService(service: Service): Future[Registration]
+  def registerService(service: Service): Registration = Await.result(asyncRegisterService(service), Duration(10, TimeUnit.SECONDS))
 
-  private[services] def printState(): Unit
+  def printState(): Unit
 
   /**
    * Register a service listener to be informed when a new service arrives and leaves the cluster

@@ -2,8 +2,8 @@ package com.distributedstuff.services.internal
 
 import java.util.concurrent.atomic.AtomicLong
 
-import com.distributedstuff.services.api.{Service, Client}
-import com.distributedstuff.services.common.{Backoff, Futures}
+import com.distributedstuff.services.api.{Client, Service}
+import com.distributedstuff.services.common.Backoff
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}

@@ -1,21 +1,21 @@
 package com.distributedstuff.services.internal
 
-import java.util
-import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
+import java.util.concurrent.TimeUnit
 
 import akka.actor._
 import akka.cluster.Cluster
+import akka.contrib.datareplication.{DataReplication, ORSet}
+import akka.pattern.ask
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, MetricRegistry}
 import com.distributedstuff.services.api._
-import com.distributedstuff.services.common.{Configuration, Futures, IdGenerator, Logger}
+import com.distributedstuff.services.common.{Configuration, IdGenerator, Logger}
+import com.distributedstuff.services.internal.ReplicatedCache._
 import com.typesafe.config.{ConfigFactory, ConfigObject}
 import org.joda.time.DateTime
 import play.api.libs.json.{JsArray, JsString, Json}
 
-import scala.concurrent.Future
-import scala.concurrent.duration.Duration
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.{Await, Future}
 
 private[services] object ServiceDirectory {
   private[internal] val systemName = "distributed-services"
@@ -40,18 +40,19 @@ private[services] object ServiceDirectory {
 private[services] class ServiceDirectory(val name: String, val configuration: Configuration, val system: ActorSystem, val m: Option[MetricRegistry], val cluster: Cluster, address: String, port: Int) extends ServicesApi with JoinableServices {
 
   implicit val ec = system.dispatcher
+  implicit val askTimeout = Timeout(10, TimeUnit.SECONDS)
   val logger = Logger("InternalServices")
-  val globalState = new ConcurrentHashMap[Address, util.Set[Service]]()
-  val stateManager = system.actorOf(Props(classOf[StateManagerActor], this), "StateManagerActor")
-  val clusterListener = system.actorOf(Props(classOf[ClusterListener], this), "ClusterListener")
-
+  val replicatedCache = system.actorOf(ReplicatedCache.props)
   var metrics = m.getOrElse(new MetricRegistry)
   var jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
+
+  if (configuration.getObject("services.http").isDefined) {
+    val host = configuration.getString("services.http.host").getOrElse("127.0.0.1")
+    val port = configuration.getInt("services.http.port").getOrElse(9999)
+    // TODO : run http server
+  }
+
   jmxRegistry.start()
-
-  askEveryoneButMe()
-  tellEveryoneToAskMe()
-
 
   override def useMetrics(m: MetricRegistry): ServicesApi = {
     jmxRegistry.stop()
@@ -63,13 +64,11 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   override def actors(): ActorSystem = system
 
-  def stateAsString() = {
-    var json = Json.obj()
-    import scala.collection.JavaConversions._
-    for (e <- globalState.entrySet()) {
-      var services = Json.arr()
-      for (service <- e.getValue) {
-        services = services.append(Json.obj(
+  def stateAsString(): Future[String] = {
+    asyncAllServices().map { services =>
+      var arr = Json.arr()
+      for (service <- services) {
+        arr = arr.append(Json.obj(
           "uid" -> service.uid,
           "name" -> service.name,
           "url" -> service.url,
@@ -77,45 +76,11 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
           "roles" -> JsArray(service.roles.map(JsString))
         ))
       }
-      json = json ++ Json.obj(e.getKey.toString -> services)
-    }
-    val size = globalState.values().toList.flatMap(_.toList).size
-    s"[$name] State is ($size services registered) : ${Json.prettyPrint(json)}"
-  }
-
-  def askEveryoneButMe(): Unit = {
-    import scala.collection.JavaConversions._
-    cluster.state.getMembers.toList.filter(_.address != cluster.selfAddress).foreach { member =>
-      askState(member.address).andThen {
-        case Success(state) => {
-          val old = Option(globalState.get(member.address)).getOrElse(new util.HashSet[Service]())
-          state.foreach { service =>
-            if (!old.contains(service)) system.eventStream.publish(ServiceRegistered(DateTime.now(), service))
-          }
-          old.foreach { service =>
-            if (!state.contains(service)) system.eventStream.publish(ServiceUnregistered(DateTime.now(), service))
-          }
-          globalState.put(member.address, new util.HashSet[Service]())
-          globalState.get(member.address).addAll(state)
-        }
-        case Failure(e) => logger.error(s"[$name] Error while asking state", e)
-      }
+      val size = arr.value.size
+      s"[$name] State is ($size services registered) : ${Json.prettyPrint(arr)}"
     }
   }
 
-  def tellEveryoneToAskMe(): Unit = {
-    import scala.collection.JavaConversions._
-    cluster.state.getMembers.toList.filter(_.address != cluster.selfAddress).foreach { member =>
-      system.actorSelection(RootActorPath(member.address) / "user" / "StateManagerActor").tell(AskMeMyState(cluster.selfAddress), stateManager)
-    }
-  }
-
-  def askState(to: Address): Future[java.util.Set[Service]] = {
-    def askIt = akka.pattern.ask(system.actorSelection(RootActorPath(to) / "user" / "StateManagerActor"), WhatIsYourState())(Timeout(10, TimeUnit.SECONDS)).mapTo[NodeState].map(_.state)
-    Futures.retry(5)(askIt)(system.dispatcher).andThen {
-      case state => //logger.debug(s"State of $to is $state")
-    }
-  }
 
   override def joinSelf(): ServicesApi = join(Seq(s"$address:$port"))
 
@@ -129,65 +94,65 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
       }
     }.toSeq)
     cluster.joinSeedNodes(addresses)
-    if (!globalState.containsKey(cluster.selfAddress)) globalState.putIfAbsent(cluster.selfAddress, new util.HashSet[Service]())
-    askEveryoneButMe()
-    tellEveryoneToAskMe()
-    def ping(): Unit = {
-      if (!system.isTerminated) {
-        Try(system.scheduler.scheduleOnce(Duration(5, TimeUnit.SECONDS)) {
-          tellEveryoneToAskMe()
-          if (!system.isTerminated) ping()
-        })
-      }
-    }
-    ping()
     this
   }
 
   override def stop(): Services = {
     jmxRegistry.stop()
-    stateManager ! PoisonPill
-    clusterListener ! PoisonPill
+    replicatedCache ! PoisonPill
     cluster.leave(cluster.selfAddress)
     system.shutdown()
     Services(name, configuration)
   }
 
-  override def registerService(service: Service): ServiceRegistration = {
+  override def asyncRegisterService(service: Service): Future[ServiceRegistration] = {
     logger.trace(s"[$name] Register service : $service")
-    if (!globalState.containsKey(cluster.selfAddress)) {
-      globalState.putIfAbsent(cluster.selfAddress, new util.HashSet[Service]())
-    }
-    globalState.get(cluster.selfAddress).add(service)
-    askEveryoneButMe()
-    tellEveryoneToAskMe()
-    logger.trace(s"[$name] ${stateAsString()}")
+    replicatedCache ! PutInCache(service.name, service)
     system.eventStream.publish(ServiceRegistered(DateTime.now(), service))
-    new ServiceRegistration(this, service)
-  }
-
-  private[this] def merge(a: ConcurrentHashMap[Address, util.Set[Service]], name: Option[String], roles: Seq[String], version: Option[String]): Set[Service] = {
-    import scala.collection.JavaConversions._
-    a.values().toList.flatMap(_.toList).filter(s => name.getOrElse(s.name) == s.name).filter { service =>
-      (roles, version) match {
-        case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
-        case (seq, Some(v)) if seq.isEmpty && version == service.version => true
-        case (seq, None) if seq.nonEmpty && seq.forall(service.roles.contains(_)) => true
-        case (seq, None) if seq.isEmpty => true
-        case _ => false
-      }
-    }.toSet[Service]
+    Future.successful(new ServiceRegistration(this, service))
   }
 
   override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5): Client = new LoadBalancedClient(name, retry, this)
 
-  override def services(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(globalState, Some(name), roles, version)
+  override def asyncServices(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]] = {
+    replicatedCache.ask(GetFromCache(name)).mapTo[Cached].map {
+      case Cached(key, Some(list)) => {
+        list.asInstanceOf[Set[Service]].filter { service =>
+          (roles, version) match {
+            case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
+            case (seq, Some(v)) if seq.isEmpty && version == service.version => true
+            case (seq, None) if seq.nonEmpty && seq.forall(service.roles.contains(_)) => true
+            case (seq, None) if seq.isEmpty => true
+            case _ => false
+          }
+        }
+      }
+      case _ => Set[Service]()
+    }
+  }
 
-  override def service(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Option[Service] = merge(globalState, Some(name), roles, version).headOption
+  override def asyncService(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Future[Option[Service]] = asyncServices(name, roles, version).map(_.headOption)
 
-  override def allServices(roles: Seq[String] = Seq(), version: Option[String] = None): Set[Service] = merge(globalState, None, roles, version)
+  override def asyncAllServices(roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]] = {
+    replicatedCache.ask(GetKeys()).mapTo[Keys].flatMap { keys =>
+      Future.sequence(keys.keys.map(key => replicatedCache.ask(GetFromCache(key)).mapTo[Cached])).map { s =>
+        s.filter {
+          case Cached(key, Some(list)) => true
+          case Cached(key, None) => false
+        }.map(_.value.get.asInstanceOf[Set[Service]]).flatten.filter { service =>
+          (roles, version) match {
+            case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
+            case (seq, Some(v)) if seq.isEmpty && version == service.version => true
+            case (seq, None) if seq.nonEmpty && seq.forall(service.roles.contains(_)) => true
+            case (seq, None) if seq.isEmpty => true
+            case _ => false
+          }
+        }
+      }
+    }
+  }
 
-  override def printState(): Unit = println(stateAsString())
+  override def printState(): Unit = stateAsString().map(println)
 
   override def registerServiceListener(listener: ActorRef): Registration = {
     system.eventStream.unsubscribe(listener, classOf[LifecycleEvent])
@@ -208,6 +173,67 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
       val roles = Option(obj.get("roles")).map(_.unwrapped().asInstanceOf[java.util.List[String]].toSeq).getOrElse(Seq[String]())
       Service(name = name, version = version, url = url, uid = uid, roles = roles)
     }
-    servicesToExpose.map(service => registerService(service))
+    servicesToExpose.map(service => Await.result(asyncRegisterService(service), askTimeout.duration))
+  }
+}
+
+object ReplicatedCache {
+
+  def props: Props = Props[ReplicatedCache]
+
+  private final case class Request(key: String, replyTo: ActorRef)
+
+  final case class FetchKeys()
+  final case class GetKeys()
+  final case class Keys(keys: Set[String])
+  final case class PutInCache(key: String, value: Any)
+  final case class GetFromCache(key: String)
+  final case class Cached(key: String, value: Option[Any])
+  final case class Evict(service: Service)
+}
+
+class ReplicatedCache() extends Actor {
+
+  import akka.contrib.datareplication.Replicator._
+
+  implicit val askTimeout = Timeout(10, TimeUnit.SECONDS)
+  implicit val ec = context.system.dispatcher
+  implicit val cluster = Cluster(context.system)
+
+  val replicator = DataReplication(context.system).replicator
+  val KeysDataKey = "service-keys"
+
+  var keys = Set.empty[String]
+
+  def dataKey(entryKey: String): String = "service-" + entryKey
+
+  override def preStart(): Unit = {
+    replicator ! Subscribe(KeysDataKey, self)
+    self ! FetchKeys()
+  }
+
+  def receive = {
+    case _: FetchKeys =>
+      replicator ! Get(KeysDataKey, ReadLocal, Some(Request(KeysDataKey, self)))
+    case GetSuccess(KeysDataKey, data: ORSet[String]@unchecked, Some(Request(key, replyTo))) =>
+      keys = data.elements
+    case _: GetKeys => sender() ! Keys(keys)
+    case Changed(KeysDataKey, data: ORSet[String] @unchecked) =>
+      keys = data.elements
+    case PutInCache(key, value) =>
+      if (!keys(key)) keys = keys + key
+      replicator ! Update(KeysDataKey, ORSet(), WriteLocal)(_ + key)
+      replicator ! Update(dataKey(key), ORSet(), WriteLocal)(_ + value)
+    case Evict(service) =>
+      replicator ! Update(dataKey(service.name), ORSet(), WriteLocal)(_ - service)
+      replicator ! Update(KeysDataKey, ORSet(), WriteLocal)(_ - service.name)
+      keys = keys.filterNot(_ == service.name)
+    case GetFromCache(key) =>
+      replicator ! Get(dataKey(key), ReadLocal, Some(Request(key, sender())))
+    case GetSuccess(_, data: ORSet[Service]@unchecked, Some(Request(key, replyTo))) =>
+      replyTo ! Cached(key, Some(data.elements))
+    case NotFound(_, Some(Request(key, replyTo))) =>
+      replyTo ! Cached(key, None)
+    case ur: UpdateResponse => // ok
   }
 }

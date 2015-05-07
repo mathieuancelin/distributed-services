@@ -25,6 +25,7 @@ class BasicUsageSpec extends Specification with Tags {
 
 
     "Register some services" in {
+      println("Register some services")
       Thread.sleep(10000) // Waiting for proper cluster joining
       reg1 = serviceNode1.registerService(service1)
       reg2 = serviceNode2.registerService(service2)
@@ -33,6 +34,7 @@ class BasicUsageSpec extends Specification with Tags {
     }
 
     "Check if services are registered" in {
+      println("Check if services are registered")
       Thread.sleep(2000) // waiting for node sync
       serviceNode1.allServices().size shouldEqual 3
       serviceNode2.allServices().size shouldEqual 3
@@ -41,7 +43,7 @@ class BasicUsageSpec extends Specification with Tags {
     }
 
     "Check if filtered services are registered" in {
-
+      println("Check if filtered services are registered")
       Thread.sleep(2000)
 
       serviceNode1.service("SERVICE4") should beNone
@@ -92,6 +94,7 @@ class BasicUsageSpec extends Specification with Tags {
     }
 
     "Unregister services" in {
+      println("Unregister services")
       reg1.unregister()
       reg2.unregister()
       reg3.unregister()
@@ -100,6 +103,7 @@ class BasicUsageSpec extends Specification with Tags {
     }
 
     "Check if services unregistered" in {
+      println("Check if services unregistered")
       serviceNode1.allServices().size shouldEqual 0
       serviceNode2.allServices().size shouldEqual 0
       serviceNode3.allServices().size shouldEqual 0
