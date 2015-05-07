@@ -14,8 +14,7 @@ class HttpApiUsageSpec extends Specification with Tags {
 
   "Service API" should {
     "Register some services" in {
-      val config = Configuration.load().withValue("services.http.port", 9999).withValue("services.http.host", "localhost")
-      val (api, regs) = Services("AutoNode").bootFromConfig(config)
+      val (api, regs) = Services("AutoNode").bootFromConfig()
       Thread.sleep(30000)
       api.stop()
       success

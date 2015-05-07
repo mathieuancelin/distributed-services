@@ -1,16 +1,18 @@
 package com.distributedstuff.services.internal
 
+import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.nio.charset.Charset
-import java.util.concurrent.{TimeUnit, Executors}
+import java.util.concurrent.{Executors, TimeUnit}
 
-import akka.actor.{Props, Actor}
+import akka.actor.{Actor, Props}
 import akka.pattern.ask
 import akka.util.Timeout
-import com.distributedstuff.services.api.Service
-import com.distributedstuff.services.common.Logger
+import com.distributedstuff.services.api.{Registration, Service}
+import com.distributedstuff.services.common.{IdGenerator, Logger}
+import com.google.common.io.CharStreams
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
-import play.api.libs.json.{Writes, JsValue, Json}
+import play.api.libs.json.{JsSuccess, JsValue, Json, Writes}
 
 sealed trait HttpCommand
 case class SearchRequest(name: Option[String], role: Option[String], version: Option[String]) extends HttpCommand
@@ -30,6 +32,7 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
   val server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0)
   val UTF8 = Charset.forName("UTF-8")
   val logger = Logger("HttpApi")
+  var registrations = Map.empty[String, Registration]
 
   override def preStart(): Unit = {
     server.setExecutor(Executors.newFixedThreadPool(4))
@@ -46,7 +49,6 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
       }
 
       override def handle(p1: HttpExchange): Unit = {
-        import collection.JavaConversions._
         (p1.getRequestMethod, p1.getRequestURI.getPath) match {
           case ("GET", "/services") => {
             val params = p1.getRequestURI.getQuery.split("&").map(v => (v.split("=")(0), v.split("=")(1))).toMap
@@ -64,13 +66,22 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
             val req = SearchRequestOne(name, role, version)
             self.ask(req).mapTo[Response].map(res => writeResponse(p1, res))
           }
-          //case ("POST", "/services") => {
-          //  val body = Json.parse(p1.getRequestBody)
-          //  writeResponse(self.ask(RegisterRequest()).mapTo[Response].map(res => writeResponse(p1, res)))
-          //}
-          //case ("DELETE", "/services") => {
-          //    writeResponse(self.ask(UnregisterRequest()).mapTo[Response].map(res => writeResponse(p1, res)))
-          //}
+          case ("POST", "/services") => {
+            val inr = new InputStreamReader(p1.getRequestBody)
+            Json.parse(CharStreams.toString(inr)).transform(Service.format) match {
+              case JsSuccess(service, _) => self.ask(RegisterRequest(service)).mapTo[Response].map(res => writeResponse(p1, res))
+              case _ => writeResponse(p1, Response(412, Json.obj()))
+            }
+          }
+          case ("DELETE", "/services") => {
+            val params = p1.getRequestURI.getQuery.split("&").map(v => (v.split("=")(0), v.split("=")(1))).toMap
+            val regId = params.get("regId")
+            if (regId.isDefined) {
+              self.ask(UnregisterRequest(regId.get)).mapTo[Response].map(res => writeResponse(p1, res))
+            } else {
+              writeResponse(p1, Response(412, Json.obj()))
+            }
+          }
           case _ => writeResponse(p1, Response(404, Json.obj()))
         }
       }
@@ -105,8 +116,17 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
         s ! Response(200, json)
       }
     }
-    case RegisterRequest(service) =>
-    case UnregisterRequest(uuid) =>
+    case RegisterRequest(service) => {
+      val uuid = IdGenerator.uuid
+      val reg = sd.registerService(service)
+      registrations = registrations + ((uuid, reg))
+      sender() ! Response(200, Json.obj("regId" -> uuid))
+    }
+    case UnregisterRequest(uuid) => {
+      registrations.get(uuid).foreach(_.unregister())
+      registrations = registrations - uuid
+      sender() ! Response(200, Json.obj("done" -> true))
+    }
     case _ =>
   }
 }
