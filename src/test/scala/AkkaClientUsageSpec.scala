@@ -4,7 +4,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.util.Timeout
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
-import com.distributedstuff.services.akkasupport.AkkaClientSupport
+import com.distributedstuff.services.clients.akkasupport.AkkaClientSupport
 import com.distributedstuff.services.common.Reference
 import com.google.common.collect.Lists
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}

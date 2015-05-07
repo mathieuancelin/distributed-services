@@ -1,6 +1,7 @@
 package com.distributedstuff.services.api
 
 import com.distributedstuff.services.common.IdGenerator
+import play.api.libs.json.Json
 
 /**
  * Description of a service
@@ -26,4 +27,8 @@ case class Service(
     }
   }
   override def hashCode(): Int = uid.hashCode
+}
+
+object Service {
+  implicit val format = Json.format[Service]
 }

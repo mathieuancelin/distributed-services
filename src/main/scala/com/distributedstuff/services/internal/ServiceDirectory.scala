@@ -18,6 +18,7 @@ import play.api.libs.json.{JsArray, JsString, Json}
 import scala.concurrent.{Await, Future}
 
 private[services] object ServiceDirectory {
+
   private[internal] val systemName = "distributed-services"
 
   Logger.configure()
@@ -46,10 +47,10 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   var metrics = m.getOrElse(new MetricRegistry)
   var jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
 
-  if (configuration.getObject("services.http").isDefined) {
+  if (configuration.getString("services.http.host").isDefined) {
     val host = configuration.getString("services.http.host").getOrElse("127.0.0.1")
     val port = configuration.getInt("services.http.port").getOrElse(9999)
-    // TODO : run http server
+    system.actorOf(HttpApi.props(host, port, this), "HttpApi")
   }
 
   jmxRegistry.start()
@@ -100,6 +101,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   override def stop(): Services = {
     jmxRegistry.stop()
     replicatedCache ! PoisonPill
+    system.actorSelection("/user/HttpApi") ! PoisonPill
     cluster.leave(cluster.selfAddress)
     system.shutdown()
     Services(name, configuration)

@@ -10,6 +10,7 @@
   <logger name="com.ning.http" level="WARN" />
   <logger name="InternalServices" level="DEBUG" />
   <logger name="StateManagerActor" level="DEBUG" />
+  <logger name="HttpApi" level="DEBUG" />
 
   <root level="debug">
     <appender-ref ref="STDOUT" />

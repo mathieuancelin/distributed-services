@@ -187,7 +187,7 @@ class Configuration(val underlying: Config) {
     }
   }
 
-  def withValue(key: String, value: AnyRef) = new Configuration(underlying.withValue(key, ConfigValueFactory.fromAnyRef(value)))
+  def withValue(key: String, value: Any) = new Configuration(underlying.withValue(key, ConfigValueFactory.fromAnyRef(value)))
 
   def getInt(path: String): Option[Int] = readValue(path, underlying.getInt(path))
 
