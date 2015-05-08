@@ -16,6 +16,7 @@ import scala.concurrent.{Await, Future}
  */
 object Services {
   private val STANDARD_ROLE = "DISTRIBUTED-SERVICES-NODE"
+  private val STANDARD_NAME = "DISTRIBUTED-SERVICES"
 
   /**
    * @return a new Services instance
@@ -41,12 +42,12 @@ object Services {
    * @return a new Services instance based on the configuration
    */
   def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
-    val name = configuration.getString("services.nodename").get
+    val name = configuration.getString("services.nodename").getOrElse(STANDARD_NAME)
     new Services(name, configuration, None).bootFromConfig(configuration)
   }
 
   def bootFromConfig(configuration: Configuration, metrics: MetricRegistry): (ServicesApi, List[Registration]) = {
-    val name = configuration.getString("services.nodename").get
+    val name = configuration.getString("services.nodename").getOrElse(STANDARD_NAME)
     new Services(name, configuration, Some(metrics)).bootFromConfig(configuration)
   }
 }
@@ -101,14 +102,15 @@ class Services(name: String, configuration: Configuration = Configuration.load()
    * @return
    */
   def startFromConfig(configuration: Configuration = Configuration.load()): ServicesApi = {
+    import collection.JavaConversions._
     val host = configuration.getString("services.boot.host").getOrElse(InetAddress.getLocalHost.getHostAddress)
     val port = configuration.getInt("services.boot.port").getOrElse(Network.freePort)
     val role = configuration.getString("services.boot.role").getOrElse(Services.STANDARD_ROLE)
-    val seed = configuration.getString("services.boot.seed")
-    Logger("SERVICES").info(s"Starting system $role@$host:$port")
+    val seedsOpt = configuration.getStringList("services.boot.seeds")
+    Logger("Services").info(s"Starting system $role@$host:$port")
     val joinable = start(host, port, role)
-    Logger("SERVICES").info(s"Joining seed $seed")
-    seed.map(s => joinable.join(s)).getOrElse(joinable.joinSelf())
+    Logger("Services").info(s"Joining seed $seedsOpt")
+    seedsOpt.map(seeds => joinable.join(seeds.toSeq)).getOrElse(joinable.joinSelf())
   }
 }
 

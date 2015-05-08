@@ -12,7 +12,7 @@ import com.distributedstuff.services.api.{Registration, Service}
 import com.distributedstuff.services.common.{IdGenerator, Logger}
 import com.google.common.io.CharStreams
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
-import play.api.libs.json.{JsSuccess, JsValue, Json, Writes}
+import play.api.libs.json._
 
 sealed trait HttpCommand
 case class SearchRequest(name: Option[String], role: Option[String], version: Option[String]) extends HttpCommand
@@ -33,6 +33,8 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
   val UTF8 = Charset.forName("UTF-8")
   val logger = Logger("HttpApi")
   var registrations = Map.empty[String, Registration]
+
+  // TODO : heartbeat
 
   override def preStart(): Unit = {
     server.setExecutor(Executors.newFixedThreadPool(4))
@@ -68,9 +70,9 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
           }
           case ("POST", "/services") => {
             val inr = new InputStreamReader(p1.getRequestBody)
-            Json.parse(CharStreams.toString(inr)).transform(Service.format) match {
+            Json.parse(CharStreams.toString(inr)).validate(Service.format) match {
               case JsSuccess(service, _) => self.ask(RegisterRequest(service)).mapTo[Response].map(res => writeResponse(p1, res))
-              case _ => writeResponse(p1, Response(412, Json.obj()))
+              case e: JsError => writeResponse(p1, Response(412, Json.obj("message" -> "Bad service structure", "errors" -> JsError.toFlatJson(e))))
             }
           }
           case ("DELETE", "/services") => {
@@ -79,10 +81,10 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
             if (regId.isDefined) {
               self.ask(UnregisterRequest(regId.get)).mapTo[Response].map(res => writeResponse(p1, res))
             } else {
-              writeResponse(p1, Response(412, Json.obj()))
+              writeResponse(p1, Response(412, Json.obj("message" -> "No regId defined")))
             }
           }
-          case _ => writeResponse(p1, Response(404, Json.obj()))
+          case _ => writeResponse(p1, Response(400, Json.obj("message" -> "Bad request")))
         }
       }
     })

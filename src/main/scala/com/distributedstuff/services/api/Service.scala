@@ -1,7 +1,7 @@
 package com.distributedstuff.services.api
 
 import com.distributedstuff.services.common.IdGenerator
-import play.api.libs.json.Json
+import play.api.libs.json.{Format, Json}
 
 /**
  * Description of a service

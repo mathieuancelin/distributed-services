@@ -102,9 +102,7 @@ services {
     boot {
         host = "127.0.0.1"
         port = 9876
-    }
-    join {
-        seed = "192.168.1.34:7896"
+        seeds = ["192.168.1.34:7896", "192.168.1.35:7896"]
     }
     autoexpose = [ // service description registered at startup
         {
