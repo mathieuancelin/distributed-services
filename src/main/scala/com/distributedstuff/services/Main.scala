@@ -10,6 +10,6 @@ import scala.concurrent.ExecutionContext
 
 object Main extends App {
   implicit val ec = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
-  val config = Configuration.load().withValue("services.http.port", 9999).withValue("services.http.host", "localhost")
-  Services("AutoNode").bootFromConfig(config)
+  val config = Configuration.load().withValue("services.http.port", 9999).withValue("services.http.host", "0.0.0.0")
+  Services("AutoNode", config).bootFromConfig()
 }

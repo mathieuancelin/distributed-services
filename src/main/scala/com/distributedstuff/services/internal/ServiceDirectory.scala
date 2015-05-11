@@ -219,7 +219,6 @@ class ReplicatedCache() extends Actor {
   var keys = Set.empty[String]
   var registrations = Map.empty[String, HttpRegistration]
 
-  def serviceRegistrationKey(regId: String): String = "service-registration-" + regId
   def serviceKey(service: Service): String = "service-descriptors-" + service.name
   def serviceKey(serviceName: String): String = "service-descriptors-" + serviceName
 
@@ -244,10 +243,10 @@ class ReplicatedCache() extends Actor {
 
     // Services expiration handling
     case RegisterServiceDescriptorExpiration(regId, reg) =>
-      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ + (serviceRegistrationKey(regId), reg))
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ + (ServiceRegistration.serviceRegistrationKey(regId), reg))
     case UpdateServiceDescriptorExpiration(regId, reg) =>
       replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal) { map =>
-        val key = serviceRegistrationKey(regId)
+        val key = ServiceRegistration.serviceRegistrationKey(regId)
         if (map.get(key).isDefined) {
           map + (key, reg)
         } else {
@@ -255,7 +254,7 @@ class ReplicatedCache() extends Actor {
         }
       }
     case RemoveServiceRegistration(regId) =>
-      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ - serviceRegistrationKey(regId))
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ - ServiceRegistration.serviceRegistrationKey(regId))
     case GetSuccess(ExpirationDataKey, data: LWWMap[HttpRegistration]@unchecked, Some(ServicesRegistrationRequest(replyTo))) =>
       registrations = data.entries
       replyTo ! ServiceRegistrations(registrations)

@@ -6,7 +6,8 @@ The project provides a Scala API to easily create distributed service directory 
 This project is based on Akka and the akka-cluster extension that provides a fault-tolerant decentralized peer-to-peer based cluster membership service with 
 no single point of failure or single point of bottleneck. It does this using gossip protocols and an automatic failure detector. 
 
-Nodes exchange messages periodicaly or on demand to discover services hosted by other nodes.
+Services descriptors are stored in memry in CRDTs structures using `Akka Data Replication` over `akka-cluster` 
+to ensure high availability, scalability, low latency and strong eventual consistency. 
 
 This project does not aim at exposing distributed services. It just provides a way to let other nodes know that one particular node
 is hosting one particular type of service.
@@ -124,3 +125,58 @@ services {
 // just bootstrap the library and publish services from config file descriptors
 val (services, registrations) = Services.bootFromConfig() 
 ```
+
+Http API
+---------
+
+You can also use the library as an HTTP service to avoid embedding it in your code.
+
+You need to provide some config 
+
+```javascript
+services {
+  http {
+    port = 9999
+    host = 0.0.0.0
+  }
+}
+```
+
+then you can bootstrap it programmatically 
+
+```scala
+val (api, _) = Services("AutoNode", config).bootFromConfig()
+```
+
+or you can just run a Jar file 
+
+```
+scala -cp MyJar.jar com.distributedstuff.services.Main 
+```
+
+Then you will access to the following API
+
+```
+POST   /services                          register a service descriptor (json body). Returns a registration ID
+PUT    /services?regId=xxxxx              heartbeat for a registration
+DELETE /services?regId=xxxxx              unregister a service descriptor
+GET    /services?name=x&version=x&role=x  search for services matching the query. Each argument is optional
+```
+
+A descriptor is written like 
+
+```javascript
+{
+  "uid": "ebb86bb52-2592-44c0-8c9d-5059909d3108",
+  "name": "service1",
+  "url": "http://localhost:9000/index",
+  "version": "1.2.3",
+  "metadata": {
+    "type": "WEB APP"
+  },
+  "roles": ["APP"]
+}
+```
+
+Each service instance will have to ping the registry to provide some kind of heartbeat. You can configure the reaping interval in
+`services.heartbeat.reaper.every`. The value is in milliseconds.

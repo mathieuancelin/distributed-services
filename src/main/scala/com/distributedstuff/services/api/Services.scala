@@ -43,12 +43,12 @@ object Services {
    */
   def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
     val name = configuration.getString("services.nodename").getOrElse(STANDARD_NAME)
-    new Services(name, configuration, None).bootFromConfig(configuration)
+    new Services(name, configuration, None).bootFromConfig()
   }
 
   def bootFromConfig(configuration: Configuration, metrics: MetricRegistry): (ServicesApi, List[Registration]) = {
     val name = configuration.getString("services.nodename").getOrElse(STANDARD_NAME)
-    new Services(name, configuration, Some(metrics)).bootFromConfig(configuration)
+    new Services(name, configuration, Some(metrics)).bootFromConfig()
   }
 }
 
@@ -85,11 +85,10 @@ class Services(name: String, configuration: Configuration = Configuration.load()
   /**
    * Boot the current node based on configuration and automatically expose services
    *
-   * @param configuration
    * @return
    */
-  def bootFromConfig(configuration: Configuration = Configuration.load()): (ServicesApi, List[Registration]) = {
-    val services = startFromConfig(configuration)
+  def bootFromConfig(): (ServicesApi, List[Registration]) = {
+    val services = startFromConfig()
     val exposed = services.exposeFromConfig()
     (services, exposed)
   }
@@ -98,10 +97,9 @@ class Services(name: String, configuration: Configuration = Configuration.load()
    * Start the current node base on configuration.
    * Will not expose services automatically.
    *
-   * @param configuration
    * @return
    */
-  def startFromConfig(configuration: Configuration = Configuration.load()): ServicesApi = {
+  def startFromConfig(): ServicesApi = {
     import collection.JavaConversions._
     val host = configuration.getString("services.boot.host").getOrElse(InetAddress.getLocalHost.getHostAddress)
     val port = configuration.getInt("services.boot.port").getOrElse(Network.freePort)

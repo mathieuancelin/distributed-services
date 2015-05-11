@@ -4,6 +4,10 @@ import com.distributedstuff.services.api.{Registration, Service}
 import com.distributedstuff.services.internal.ReplicatedCache.RemoveServiceDescriptor
 import org.joda.time.DateTime
 
+object ServiceRegistration {
+  def serviceRegistrationKey(regId: String): String = "service-registration-" + regId
+}
+
 class ServiceRegistration(is: ServiceDirectory, service: Service) extends Registration {
   def unregister() = {
     is.replicatedCache ! RemoveServiceDescriptor(service)
