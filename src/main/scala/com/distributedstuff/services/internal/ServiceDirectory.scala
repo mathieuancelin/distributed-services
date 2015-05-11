@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor._
 import akka.cluster.Cluster
-import akka.contrib.datareplication.{DataReplication, ORSet}
+import akka.contrib.datareplication.{DataReplication, LWWMap, ORSet}
 import akka.pattern.ask
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, MetricRegistry}
@@ -93,7 +93,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
         case addr :: prt :: Nil => akka.actor.Address("akka.tcp", ServiceDirectory.systemName, addr, prt.toInt)
         case _ => throw new RuntimeException(s"Bad akka address : $message")
       }
-    }.toSeq)
+    })
     cluster.joinSeedNodes(addresses)
     this
   }
@@ -109,7 +109,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   override def asyncRegisterService(service: Service): Future[ServiceRegistration] = {
     logger.trace(s"[$name] Register service : $service")
-    replicatedCache ! PutInCache(service.name, service)
+    replicatedCache ! StoreServiceDescriptor(service)
     system.eventStream.publish(ServiceRegistered(DateTime.now(), service))
     Future.successful(new ServiceRegistration(this, service))
   }
@@ -117,9 +117,9 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5): Client = new LoadBalancedClient(name, retry, this)
 
   override def asyncServices(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]] = {
-    replicatedCache.ask(GetFromCache(name)).mapTo[Cached].map {
-      case Cached(key, Some(list)) => {
-        list.asInstanceOf[Set[Service]].filter { service =>
+    replicatedCache.ask(GetServiceDescriptors(name)).mapTo[ServiceDescriptors].map {
+      case ServiceDescriptors(key, Some(list)) => {
+        list.filter { service =>
           (roles, version) match {
             case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
             case (seq, Some(v)) if seq.isEmpty && version == service.version => true
@@ -137,11 +137,11 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 
   override def asyncAllServices(roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]] = {
     replicatedCache.ask(GetKeys()).mapTo[Keys].flatMap { keys =>
-      Future.sequence(keys.keys.map(key => replicatedCache.ask(GetFromCache(key)).mapTo[Cached])).map { s =>
+      Future.sequence(keys.keys.map(key => replicatedCache.ask(GetServiceDescriptors(key)).mapTo[ServiceDescriptors])).map { s =>
         s.filter {
-          case Cached(key, Some(list)) => true
-          case Cached(key, None) => false
-        }.map(_.value.get.asInstanceOf[Set[Service]]).flatten.filter { service =>
+          case ServiceDescriptors(key, Some(list)) => true
+          case ServiceDescriptors(key, None) => false
+        }.map(_.value.get).flatten.filter { service =>
           (roles, version) match {
             case (seq, Some(v)) if seq.nonEmpty && seq.forall(service.roles.contains(_)) && version == service.version => true
             case (seq, Some(v)) if seq.isEmpty && version == service.version => true
@@ -183,15 +183,26 @@ object ReplicatedCache {
 
   def props: Props = Props[ReplicatedCache]
 
-  private final case class Request(key: String, replyTo: ActorRef)
 
-  final case class FetchKeys()
-  final case class GetKeys()
+  private final case class FetchKeys()  // to trigger fetching of all the known services keys
+  final case class GetKeys()                            // public API to get all known keys
   final case class Keys(keys: Set[String])
-  final case class PutInCache(key: String, value: Any)
-  final case class GetFromCache(key: String)
-  final case class Cached(key: String, value: Option[Any])
-  final case class Evict(service: Service)
+
+  private final case class ServiceDescriptorRequest(key: String, replyTo: ActorRef)
+  final case class StoreServiceDescriptor(value: Service)
+  final case class GetServiceDescriptors(name: String)
+  final case class ServiceDescriptors(key: String, value: Option[Set[Service]])
+  final case class RemoveServiceDescriptor(service: Service)
+
+  private final case class ServicesRegistrationRequest(replyTo: ActorRef)
+  private final case class FetchRegistrations()
+  final case class GetServiceRegistrations()
+  final case class UpdateServiceDescriptorExpiration(regId: String, reg: HttpRegistration)
+  final case class RegisterServiceDescriptorExpiration(regId: String, reg: HttpRegistration)
+  final case class RemoveServiceRegistration(regId: String)
+  final case class ServiceRegistrations(registrations: Map[String, HttpRegistration])
+  final case class HttpRegistration(uuid: String, name: String, expiration: Long)
+  // fetch regs
 }
 
 class ReplicatedCache() extends Actor {
@@ -204,38 +215,73 @@ class ReplicatedCache() extends Actor {
 
   val replicator = DataReplication(context.system).replicator
   val KeysDataKey = "service-keys"
-
+  val ExpirationDataKey = "service-expirations"
   var keys = Set.empty[String]
+  var registrations = Map.empty[String, HttpRegistration]
 
-  def dataKey(entryKey: String): String = "service-" + entryKey
+  def serviceRegistrationKey(regId: String): String = "service-registration-" + regId
+  def serviceKey(service: Service): String = "service-descriptors-" + service.name
+  def serviceKey(serviceName: String): String = "service-descriptors-" + serviceName
 
   override def preStart(): Unit = {
     replicator ! Subscribe(KeysDataKey, self)
+    replicator ! Subscribe(ExpirationDataKey, self)
     self ! FetchKeys()
+    self ! FetchRegistrations()
   }
 
   def receive = {
+
+    // Services names handling
     case _: FetchKeys =>
-      replicator ! Get(KeysDataKey, ReadLocal, Some(Request(KeysDataKey, self)))
-    case GetSuccess(KeysDataKey, data: ORSet[String]@unchecked, Some(Request(key, replyTo))) =>
+      replicator ! Get(KeysDataKey, ReadLocal, Some(ServiceDescriptorRequest(KeysDataKey, self)))
+    case GetSuccess(KeysDataKey, data: ORSet[String]@unchecked, Some(ServiceDescriptorRequest(key, replyTo))) =>
       keys = data.elements
-    case _: GetKeys => sender() ! Keys(keys)
+    case _: GetKeys =>
+      sender() ! Keys(keys)
     case Changed(KeysDataKey, data: ORSet[String] @unchecked) =>
       keys = data.elements
-    case PutInCache(key, value) =>
+
+    // Services expiration handling
+    case RegisterServiceDescriptorExpiration(regId, reg) =>
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ + (serviceRegistrationKey(regId), reg))
+    case UpdateServiceDescriptorExpiration(regId, reg) =>
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal) { map =>
+        val key = serviceRegistrationKey(regId)
+        if (map.get(key).isDefined) {
+          map + (key, reg)
+        } else {
+          map
+        }
+      }
+    case RemoveServiceRegistration(regId) =>
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ - serviceRegistrationKey(regId))
+    case GetSuccess(ExpirationDataKey, data: LWWMap[HttpRegistration]@unchecked, Some(ServicesRegistrationRequest(replyTo))) =>
+      registrations = data.entries
+      replyTo ! ServiceRegistrations(registrations)
+    case Changed(ExpirationDataKey, data: LWWMap[HttpRegistration] @unchecked) =>
+      registrations = data.entries
+    case _: FetchRegistrations =>
+      replicator ! Get(ExpirationDataKey, ReadLocal, Some(ServicesRegistrationRequest(self)))
+    case _: GetServiceRegistrations =>
+      sender() ! ServiceRegistrations(registrations)
+
+    // Services descriptors handling
+    case StoreServiceDescriptor(service) =>
+      val key = service.name
       if (!keys(key)) keys = keys + key
       replicator ! Update(KeysDataKey, ORSet(), WriteLocal)(_ + key)
-      replicator ! Update(dataKey(key), ORSet(), WriteLocal)(_ + value)
-    case Evict(service) =>
-      replicator ! Update(dataKey(service.name), ORSet(), WriteLocal)(_ - service)
+      replicator ! Update(serviceKey(service), ORSet(), WriteLocal)(_ + service)
+    case RemoveServiceDescriptor(service) =>
+      replicator ! Update(serviceKey(service), ORSet(), WriteLocal)(_ - service)
       replicator ! Update(KeysDataKey, ORSet(), WriteLocal)(_ - service.name)
-      keys = keys.filterNot(_ == service.name)
-    case GetFromCache(key) =>
-      replicator ! Get(dataKey(key), ReadLocal, Some(Request(key, sender())))
-    case GetSuccess(_, data: ORSet[Service]@unchecked, Some(Request(key, replyTo))) =>
-      replyTo ! Cached(key, Some(data.elements))
-    case NotFound(_, Some(Request(key, replyTo))) =>
-      replyTo ! Cached(key, None)
+      if (keys(service.name)) keys = keys - service.name
+    case GetServiceDescriptors(key) =>
+      replicator ! Get(serviceKey(key), ReadLocal, Some(ServiceDescriptorRequest(key, sender())))
+    case GetSuccess(_, data: ORSet[Service]@unchecked, Some(ServiceDescriptorRequest(key, replyTo))) =>
+      replyTo ! ServiceDescriptors(key, Some(data.elements))
+    case NotFound(_, Some(ServiceDescriptorRequest(key, replyTo))) =>
+      replyTo ! ServiceDescriptors(key, None)
     case ur: UpdateResponse => // ok
   }
 }

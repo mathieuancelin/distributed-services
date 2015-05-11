@@ -6,38 +6,52 @@ import java.nio.charset.Charset
 import java.util.concurrent.{Executors, TimeUnit}
 
 import akka.actor.{Actor, Props}
+import akka.cluster.ClusterEvent.LeaderChanged
+import akka.cluster.{Cluster, ClusterEvent}
 import akka.pattern.ask
 import akka.util.Timeout
-import com.distributedstuff.services.api.{Registration, Service}
-import com.distributedstuff.services.common.{IdGenerator, Logger}
+import com.distributedstuff.services.api.Service
+import com.distributedstuff.services.common.Logger
+import com.distributedstuff.services.internal.HttpApi.UnregisterNonResponsiveServices
+import com.distributedstuff.services.internal.ReplicatedCache._
 import com.google.common.io.CharStreams
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import play.api.libs.json._
+
+import scala.concurrent.duration.Duration
 
 sealed trait HttpCommand
 case class SearchRequest(name: Option[String], role: Option[String], version: Option[String]) extends HttpCommand
 case class SearchRequestOne(name: Option[String], role: Option[String], version: Option[String]) extends HttpCommand
 case class RegisterRequest(service: Service) extends HttpCommand
 case class UnregisterRequest(uuid: String) extends HttpCommand
+case class Heartbeat(uuid: String) extends HttpCommand
 case class Response(code: Int, body: JsValue)
 
 object HttpApi {
   def props(host: String, port: Int, sd: ServiceDirectory) = Props(classOf[HttpApi], host, port, sd)
+  final case class UnregisterNonResponsiveServices()
 }
 
 class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
 
   implicit val ec = context.system.dispatcher
   implicit val askTimeout = Timeout(10, TimeUnit.SECONDS)
-  val server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0)
+  implicit val cluster = Cluster(context.system)
   val UTF8 = Charset.forName("UTF-8")
   val logger = Logger("HttpApi")
-  var registrations = Map.empty[String, Registration]
+  val httpExecutor = Executors.newFixedThreadPool(4)
 
-  // TODO : heartbeat
+  val reaperDuration = Duration(sd.configuration.getInt("services.heartbeat.ripper").getOrElse(1800000), TimeUnit.MILLISECONDS)
+
+  var server: HttpServer = _
+  var leader = false
 
   override def preStart(): Unit = {
-    server.setExecutor(Executors.newFixedThreadPool(4))
+    logger.info("Actually starting Http Api")
+    cluster.subscribe(self, ClusterEvent.InitialStateAsEvents, classOf[ClusterEvent.LeaderChanged])
+    server = HttpServer.create(new InetSocketAddress(host, port), 0)
+    server.setExecutor(httpExecutor)
     server.createContext("/", new HttpHandler {
 
       def writeResponse(p1: HttpExchange, response: Response) = {
@@ -75,6 +89,15 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
               case e: JsError => writeResponse(p1, Response(412, Json.obj("message" -> "Bad service structure", "errors" -> JsError.toFlatJson(e))))
             }
           }
+          case ("PUT" , "/services") => {
+            val params = p1.getRequestURI.getQuery.split("&").map(v => (v.split("=")(0), v.split("=")(1))).toMap
+            val regId = params.get("regId")
+            if (regId.isDefined) {
+              self.ask(Heartbeat(regId.get)).mapTo[Response].map(res => writeResponse(p1, res))
+            } else {
+              writeResponse(p1, Response(412, Json.obj("message" -> "No regId defined")))
+            }
+          }
           case ("DELETE", "/services") => {
             val params = p1.getRequestURI.getQuery.split("&").map(v => (v.split("=")(0), v.split("=")(1))).toMap
             val regId = params.get("regId")
@@ -90,13 +113,20 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
     })
     logger.info(s"Starting Http server at http://$host:$port/services ...")
     server.start()
+    context.system.scheduler.schedule(Duration(0, TimeUnit.MILLISECONDS), reaperDuration, self, UnregisterNonResponsiveServices())
   }
 
   override def postStop(): Unit = {
+    logger.info("Stopping Http Api now !!!")
     server.stop(0)
+    httpExecutor.shutdownNow()
   }
 
   override def receive: Receive = {
+    case LeaderChanged(node) => {
+      val wasLeader = leader
+      leader = node.contains(cluster.selfAddress)
+    }
     case SearchRequest(name, role, version) => {
       val s = sender()
       if (name.isDefined) {
@@ -119,15 +149,49 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
       }
     }
     case RegisterRequest(service) => {
-      val uuid = IdGenerator.uuid
-      val reg = sd.registerService(service)
-      registrations = registrations + ((uuid, reg))
+      val uuid = service.uid
+      sd.registerService(service)
+      sd.replicatedCache ! RegisterServiceDescriptorExpiration(uuid, HttpRegistration(uuid, service.name, System.currentTimeMillis() + reaperDuration.toMillis))
       sender() ! Response(200, Json.obj("regId" -> uuid))
     }
+    case Heartbeat(uuid) => {
+      val time = System.currentTimeMillis() + reaperDuration.toMillis
+      sd.replicatedCache ! UpdateServiceDescriptorExpiration(uuid, HttpRegistration(uuid, "fuuuuu", time))
+      sender() ! Response(200, Json.obj("regId" -> uuid, "until" -> time))
+    }
     case UnregisterRequest(uuid) => {
-      registrations.get(uuid).foreach(_.unregister())
-      registrations = registrations - uuid
-      sender() ! Response(200, Json.obj("done" -> true))
+      sd.replicatedCache ! RemoveServiceRegistration(uuid)
+      sd.replicatedCache.ask(GetServiceRegistrations()).mapTo[ServiceRegistrations].map { regs =>
+        regs.registrations.get("service-registration-" + uuid).map { reg =>
+          sd.asyncAllServices().map { services =>
+            services.find(_.uid == uuid).foreach { service =>
+              sd.replicatedCache ! RemoveServiceDescriptor(service)
+            }
+          }
+        }
+      }.map { _ =>
+        sender() ! Response(200, Json.obj("done" -> true))
+      }
+    }
+    case _: UnregisterNonResponsiveServices => {
+      if (leader) {
+        logger.info("Reaper mode on ...")
+        sd.replicatedCache.ask(GetServiceRegistrations()).mapTo[ServiceRegistrations].map { regs =>
+          val time = System.currentTimeMillis()
+          regs.registrations.foreach {
+            case (key, reg) if reg.expiration < time => {
+              sd.replicatedCache ! RemoveServiceRegistration(reg.uuid)
+              sd.asyncAllServices().map { services =>
+                services.find(_.uid == reg.uuid).foreach { service =>
+                  logger.info(s"Reaping off $service")
+                  sd.replicatedCache ! RemoveServiceDescriptor(service)
+                }
+              }
+            }
+            case _ =>
+          }
+        }
+      }
     }
     case _ =>
   }

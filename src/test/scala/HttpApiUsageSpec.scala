@@ -15,7 +15,7 @@ class HttpApiUsageSpec extends Specification with Tags {
   "Service API" should {
     "Register some services" in {
       val (api, regs) = Services("AutoNode").bootFromConfig()
-      Thread.sleep(30000)
+      Thread.sleep(3000)
       api.stop()
       success
     }
