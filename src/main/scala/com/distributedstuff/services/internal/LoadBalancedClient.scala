@@ -8,12 +8,12 @@ import com.distributedstuff.services.common.Backoff
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
-private[services] class LoadBalancedClient(name: String, times: Int, is: ServiceDirectory) extends Client {
+private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, times: Int, is: ServiceDirectory) extends Client {
 
   private[this] val counter = new AtomicLong(0L)
 
   def bestService: Option[Service] = {
-    val services = is.services(name)
+    val services = is.services(name, roles, version)
     if (services.isEmpty) None
     else {
       val size = services.size
@@ -27,6 +27,7 @@ private[services] class LoadBalancedClient(name: String, times: Int, is: Service
     Backoff.retry(times) {
       is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
       val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+      // TODO : replace `f` call with a command based on service query
       bestService.map(s => Future.successful(f(s))).getOrElse(Future.failed(new NoSuchElementException)).andThen {
         case Success(_) => {
           ctx.close()
@@ -45,6 +46,7 @@ private[services] class LoadBalancedClient(name: String, times: Int, is: Service
     Backoff.retry(times) {
       is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
       val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+      // TODO : replace `f` call with a command based on service query
       bestService.map(s => f(s)).getOrElse(Future.failed(new NoSuchElementException)).andThen {
         case Success(_) => {
           ctx.close()

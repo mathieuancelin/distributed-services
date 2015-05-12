@@ -114,7 +114,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     Future.successful(new ServiceRegistration(this, service))
   }
 
-  override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5): Client = new LoadBalancedClient(name, retry, this)
+  override def client(name: String, roles: Seq[String] = Seq(), version: Option[String] = None, retry: Int = 5): Client = new LoadBalancedClient(name, roles, version, retry, this)
 
   override def asyncServices(name: String, roles: Seq[String] = Seq(), version: Option[String] = None): Future[Set[Service]] = {
     replicatedCache.ask(GetServiceDescriptors(name)).mapTo[ServiceDescriptors].map {

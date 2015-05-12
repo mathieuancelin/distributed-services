@@ -57,15 +57,15 @@ object CircuitBreakerHealth {
 
   object Meter {
     private val TICK_INTERVAL: Long = TimeUnit.SECONDS.toNanos(5)
-    def getTick: Long = System.nanoTime
+    def getTick(): Long = System.nanoTime
   }
 
   class Meter {
-    private final val m1window: CircuitBreakerHealth.SlidingWindow[Long] = new CircuitBreakerHealth.SlidingWindow[Long](Duration("1min"))
-    private final val m1Rate: CircuitBreakerHealth.EWMA = EWMA.oneMinuteEWMA
-    private final val count: AtomicLong = new AtomicLong()
-    private final val startTime: Long = Meter.getTick
-    private final val lastTick: AtomicLong = new AtomicLong(startTime)
+    private val m1window = new CircuitBreakerHealth.SlidingWindow[Long](Duration("1min"))
+    private val m1Rate = EWMA.oneMinuteEWMA
+    private val count = new AtomicLong(0)
+    private val startTime = Meter.getTick()
+    private val lastTick = new AtomicLong(startTime)
 
     def update(nanos: Long) {
       m1window.update(nanos)
@@ -88,14 +88,14 @@ object CircuitBreakerHealth {
     }
 
     private def tickIfNecessary() {
-      val oldTick: Long = lastTick.get
-      val newTick: Long = Meter.getTick
-      val age: Long = newTick - oldTick
+      val oldTick = lastTick.get
+      val newTick = Meter.getTick()
+      val age = newTick - oldTick
       if (age > Meter.TICK_INTERVAL) {
-        val newIntervalStartTick: Long = newTick - age % Meter.TICK_INTERVAL
+        val newIntervalStartTick = newTick - age % Meter.TICK_INTERVAL
         if (lastTick.compareAndSet(oldTick, newIntervalStartTick)) {
-          val requiredTicks: Long = age / Meter.TICK_INTERVAL
-          for (i <- 0L to requiredTicks - 1) {
+          val requiredTicks = age / Meter.TICK_INTERVAL
+          for (i <- 1L to requiredTicks) {
             m1Rate.tick()
           }
         }
@@ -122,14 +122,14 @@ object CircuitBreakerHealth {
    * From metrics : https://github.com/dropwizard/metrics/blob/master/metrics-core/src/main/java/com/codahale/metrics/EWMA.java
    */
   object EWMA {
-    private val INTERVAL: Int = 5
-    private val SECONDS_PER_MINUTE: Double = 60.0
-    private val ONE_MINUTE: Int = 1
-    private val FIVE_MINUTES: Int = 5
-    private val FIFTEEN_MINUTES: Int = 15
-    private val M1_ALPHA: Double = 1 - exp(-INTERVAL / SECONDS_PER_MINUTE / ONE_MINUTE)
-    private val M5_ALPHA: Double = 1 - exp(-INTERVAL / SECONDS_PER_MINUTE / FIVE_MINUTES)
-    private val M15_ALPHA: Double = 1 - exp(-INTERVAL / SECONDS_PER_MINUTE / FIFTEEN_MINUTES)
+    private val INTERVAL = 5
+    private val SECONDS_PER_MINUTE = 60.0
+    private val ONE_MINUTE = 1
+    private val FIVE_MINUTES = 5
+    private val FIFTEEN_MINUTES = 15
+    private val M1_ALPHA = 1 - exp(-INTERVAL / SECONDS_PER_MINUTE / ONE_MINUTE)
+    private val M5_ALPHA = 1 - exp(-INTERVAL / SECONDS_PER_MINUTE / FIVE_MINUTES)
+    private val M15_ALPHA = 1 - exp(-INTERVAL / SECONDS_PER_MINUTE / FIFTEEN_MINUTES)
 
     def oneMinuteEWMA: CircuitBreakerHealth.EWMA = new CircuitBreakerHealth.EWMA(M1_ALPHA, INTERVAL, TimeUnit.SECONDS)
 
@@ -140,19 +140,19 @@ object CircuitBreakerHealth {
 
   class EWMA(alpha: Double, i: Long, intervalUnit: TimeUnit) {
     @volatile
-    private var initialized: Boolean = false
+    private var initialized = false
     @volatile
-    private var rate: Double = 0.0
-    private final val uncounted: AtomicLong = new AtomicLong
-    private final val interval = intervalUnit.toNanos(i)
+    private var rate = 0.0
+    private val uncounted = new AtomicLong(0)
+    private val interval = intervalUnit.toNanos(i)
 
     def update(n: Long) {
       uncounted.addAndGet(n)
     }
 
     def tick() {
-      val count: Long = uncounted.getAndSet(0)
-      val instantRate: Double = count / interval
+      val count = uncounted.getAndSet(0)
+      val instantRate = count / interval
       if (initialized) {
         rate += (alpha * (instantRate - rate))
       } else {
@@ -165,15 +165,15 @@ object CircuitBreakerHealth {
   }
 
   object SlidingWindow {
-    private val COLLISION_BUFFER: Int = 256
-    private val TRIM_THRESHOLD: Int = 256
+    private val COLLISION_BUFFER = 256
+    private val TRIM_THRESHOLD = 256
   }
 
   class SlidingWindow[T](w: Duration) {
-    private final val measurements = new ConcurrentSkipListMap[Long, T]()
-    private final val window = w.toNanos * SlidingWindow.COLLISION_BUFFER
-    private final val lastTick = new AtomicLong(Meter.getTick * SlidingWindow.COLLISION_BUFFER)
-    private final val count = new AtomicLong(0)
+    private val measurements = new ConcurrentSkipListMap[Long, T]()
+    private val window = w.toNanos * SlidingWindow.COLLISION_BUFFER
+    private val lastTick = new AtomicLong(Meter.getTick * SlidingWindow.COLLISION_BUFFER)
+    private val count = new AtomicLong(0)
 
     def size: Int = {
       trim()
@@ -181,9 +181,7 @@ object CircuitBreakerHealth {
     }
 
     def update(value: T) {
-      if (count.incrementAndGet % SlidingWindow.TRIM_THRESHOLD == 0) {
-        trim()
-      }
+      if (count.incrementAndGet % SlidingWindow.TRIM_THRESHOLD == 0) trim()
       measurements.put(getTick, value)
     }
 
@@ -221,25 +219,23 @@ object CircuitBreakerHealth {
       if (values.length == 0) {
         return 0.0
       }
-      val pos: Double = quantile * (values.length + 1)
+      val pos = quantile * (values.length + 1)
       if (pos < 1) {
         return values.head
       }
       if (pos >= values.length) {
         return values(values.length - 1)
       }
-      val lower: Double = values(pos.toInt - 1)
-      val upper: Double = values(pos.toInt)
+      val lower = values(pos.toInt - 1)
+      val upper = values(pos.toInt)
       lower + (pos - floor(pos)) * (upper - lower)
     }
 
     def size: Int = values.length
 
     def getMax: Long = {
-      if (values.length == 0) {
-        return 0
-      }
-      values(values.length - 1)
+      if (values.length == 0) 0
+      else values(values.length - 1)
     }
 
     def getMin: Long = {
@@ -263,12 +259,12 @@ object CircuitBreakerHealth {
         return 0
       }
       val mean: Double = getMean
-      var sum: Double = 0
+      var sum: Double = 0.0
       for (value <- values) {
-        val diff: Double = value - mean
+        val diff = value - mean
         sum += diff * diff
       }
-      val variance: Double = sum / (values.length - 1)
+      val variance = sum / (values.length - 1)
       Math.sqrt(variance)
     }
 
@@ -335,7 +331,7 @@ class CircuitBreakerHealth(windowDuration: Duration) {
   }
 
   def stats(commandName: String, host: String, closed: Boolean): JsObject = {
-    val snapshot: CircuitBreakerHealth.Snapshot = request.getSnapshot()
+    val snapshot = request.getSnapshot()
     Json.obj(
       "command" -> commandName,
       "host" -> host,
@@ -356,12 +352,12 @@ class CircuitBreakerHealth(windowDuration: Duration) {
 }
 
 class MeasuredRate(si: Long) {
-  private final val lastBucket = new AtomicLong(0)
-  private final val currentBucket = new AtomicLong(0)
-  private final val sampleInterval = si
+  private val lastBucket = new AtomicLong(0)
+  private val currentBucket = new AtomicLong(0)
+  private val sampleInterval = si
 
   @volatile
-  private var threshold: Long = System.currentTimeMillis + sampleInterval
+  private var threshold = System.currentTimeMillis + sampleInterval
 
   /**
    * Returns the count in the last sample interval
@@ -398,7 +394,7 @@ class MeasuredRate(si: Long) {
   }
 
   private def checkAndResetWindow() {
-    val now: Long = System.currentTimeMillis()
+    val now = System.currentTimeMillis()
     if (threshold < now) {
       lastBucket.set(currentBucket.get)
       currentBucket.set(0)

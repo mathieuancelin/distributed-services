@@ -1,15 +1,15 @@
 package com.distributedstuff.services.clients.command
 
 import java.util
-import java.util.concurrent.{ConcurrentHashMap, Executors, ScheduledExecutorService, TimeUnit}
+import java.util.concurrent.{ConcurrentHashMap, Executors, TimeUnit}
 
-import com.google.common.cache.{Cache, CacheBuilder}
+import com.google.common.cache.CacheBuilder
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Future, Promise}
 
 trait CommandCache {
-  def get(key: String): AnyRef
+  def get[T](key: String): Option[T]
   def put(key: String, value: AnyRef)
   def cleanUp()
 }
@@ -19,10 +19,10 @@ object InMemoryCommandCache {
 }
 
 class InMemoryCommandCache(retained: Duration) extends CommandCache {
-  private final val cache: Cache[String, AnyRef] =
-    CacheBuilder.newBuilder.expireAfterWrite(retained.toMillis, TimeUnit.MILLISECONDS).build[String, AnyRef]
 
-  def get(key: String): AnyRef = cache.getIfPresent(key)
+  private val cache = CacheBuilder.newBuilder.expireAfterWrite(retained.toMillis, TimeUnit.MILLISECONDS).build[String, AnyRef]
+
+  def get[T](key: String): Option[T] = Option(cache.getIfPresent(key)).map(_.asInstanceOf[T])
 
   def put(key: String, value: AnyRef) {
     cache.put(key, value)
@@ -33,29 +33,24 @@ class InMemoryCommandCache(retained: Duration) extends CommandCache {
   }
 }
 
-object CommandConflater {
+private class ConflaterExecutionContext[T](val command: Command[T], val promise: Promise[T], val future: Future[T], val ctx: CommandContext, val start: Long) {
 
-  private class ExecutionContext[T](val command: Command[T], val promise: Promise[T], val future: Future[T], val ctx: CommandContext, val start: Long) {
+  def collapseKey: Option[String] = command.conflateKey
 
-    def collapseKey: Option[String] = command.conflateKey
-
-    def execute {
-      ctx.executeRequest(command, promise, future, start)
-    }
-  }
-
-  def of(d: Duration): CommandConflater = {
-    val collapser: CommandConflater = new CommandConflater(d)
-    collapser.start()
-    collapser
+  def execute {
+    ctx.executeRequest(command, promise, future, start)
   }
 }
 
+object CommandConflater {
+  def of(d: Duration): CommandConflater = new CommandConflater(d).start()
+}
+
 class CommandConflater(every: Duration) {
-  private final val lock: AnyRef = new AnyRef
-  private final val ec: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor
-  private val queue: ConcurrentHashMap[String, CommandConflater.ExecutionContext[_]] =
-    new ConcurrentHashMap[String, CommandConflater.ExecutionContext[_]]
+
+  private val lock = new AnyRef
+  private val ec = Executors.newSingleThreadScheduledExecutor
+  private val queue = new ConcurrentHashMap[String, ConflaterExecutionContext[_]]
 
   private[command] def add[T](command: Command[T], promise: Promise[T], future: Future[T], ctx: CommandContext, start: Long): Future[T] = {
     lock synchronized {
@@ -63,11 +58,11 @@ class CommandConflater(every: Duration) {
       if (keyOpt.isEmpty) return Future.failed(new RuntimeException(s"Conflate key not defined for ${command.name}"))
       val key = keyOpt.get
       if (!queue.containsKey(key)) {
-        val e = queue.putIfAbsent(key, new CommandConflater.ExecutionContext[T](command, promise, future, ctx, start)).asInstanceOf[CommandConflater.ExecutionContext[T]]
+        val e = queue.putIfAbsent(key, new ConflaterExecutionContext[T](command, promise, future, ctx, start)).asInstanceOf[ConflaterExecutionContext[T]]
         if (e != null) e.future
         else future
       } else {
-        queue.get(key).asInstanceOf[CommandConflater.ExecutionContext[T]].future
+        queue.get(key).asInstanceOf[ConflaterExecutionContext[T]].future
       }
     }
   }
@@ -108,8 +103,9 @@ class CommandConflater(every: Duration) {
     }
   }
 
-  private def start() {
+  private def start(): CommandConflater = {
     schedule(0, TimeUnit.MILLISECONDS)
+    this
   }
 
   def stop() {

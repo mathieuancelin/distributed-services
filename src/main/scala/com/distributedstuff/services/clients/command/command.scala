@@ -40,9 +40,9 @@ class CommandContext(context: ActorSystem, allowedThreads: Int, strategy: Circui
 
   implicit val ec = context.dispatcher
 
-  private val DEFAULT_BREAKER: String = "__DEFAULT_BREAKER__"
-  private val breakers: ConcurrentHashMap[String, CircuitBreaker] = new ConcurrentHashMap[String, CircuitBreaker]
-  private val counter: AtomicInteger = new AtomicInteger(0)
+  private val DEFAULT_BREAKER = "__DEFAULT_BREAKER__"
+  private val breakers = new ConcurrentHashMap[String, CircuitBreaker]
+  private val counter = new AtomicInteger(0)
 
   def withAllowedThreads(n: Int): CommandContext = new CommandContext(this.context, n, this.strategy, this.cache, this.collapser)
 
@@ -54,9 +54,7 @@ class CommandContext(context: ActorSystem, allowedThreads: Int, strategy: Circui
 
   def withCircuitBreakerStrategy(c: Strategy): CommandContext = new CommandContext(this.context, this.allowedThreads, c, this.cache, this.collapser)
 
-  def andReportToSystemOut(every: Duration): CommandContext = {
-    andReport(every, { input => println(Json.prettyPrint(Json.arr(input))) })
-  }
+  def andReportToSystemOut(every: Duration): CommandContext = andReport(every, { input => println(Json.prettyPrint(Json.arr(input))) })
 
   def andReport(every: Duration, to: List[JsObject] => Unit): CommandContext = {
     def report: Unit = {
@@ -83,34 +81,24 @@ class CommandContext(context: ActorSystem, allowedThreads: Int, strategy: Circui
   }
 
   def execute[T](command: Command[T]): Future[T] = {
-    val start: Long = System.currentTimeMillis
+    val start = System.currentTimeMillis
     val promise = Promise[T]()
     val finalFuture = promise.future.andThen {
       case _ => counter.decrementAndGet()
     }
     val cacheKeyOpt = command.cacheKey
     if (cacheKeyOpt.isDefined && cache.isDefined) {
-      val o = cache.get.get(cacheKeyOpt.get)
-      if (o != null) {
-        return o.asInstanceOf[Future[T]]
-      }
+      val o = cache.get.get[Future[T]](cacheKeyOpt.get)
+      if (o.isDefined) return o.get
     }
     val breaker = getBreaker(command.name)
     if (!breaker.allowRequest) {
       breaker.metrics.shortcircuit.mark()
-      try {
-        return command.fallback.map(Future.successful).getOrElse(Future.failed(new CircuitOpenException("The circuit is open")))
-      } catch {
-        case t: Throwable => return Future.failed(t)
-      }
+      return Try(command.fallback.map(Future.successful).getOrElse(Future.failed(new CircuitOpenException("The circuit is open")))).recover { case e => Future.failed(e) }.get
     }
     if (allowedThreads <= counter.get) {
       breaker.metrics.rejected.mark()
-      try {
-        return command.fallback.map(Future.successful).getOrElse(Future.failed(new TooManyConcurrentRequestsException("Max allowed request is " + allowedThreads)))
-      } catch {
-        case t: Throwable => return Future.failed(t)
-      }
+      return Try(command.fallback.map(Future.successful).getOrElse(Future.failed(new TooManyConcurrentRequestsException(s"Max allowed request is $allowedThreads")))).recover { case e => Future.failed(e) }.get
     }
     if (cacheKeyOpt.isDefined && cache.isDefined) {
       cache.get.put(cacheKeyOpt.get, finalFuture)
@@ -159,11 +147,7 @@ class CommandContext(context: ActorSystem, allowedThreads: Int, strategy: Circui
 
   def shutdown() {
     context.shutdown()
-    if (collapser.isDefined) {
-      collapser.get.stop()
-    }
-    if (cache.isDefined) {
-      cache.get.cleanUp
-    }
+    collapser.foreach(_.stop())
+    cache.foreach(_.cleanUp())
   }
 }
