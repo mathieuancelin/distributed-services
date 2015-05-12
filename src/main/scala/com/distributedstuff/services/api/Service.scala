@@ -1,6 +1,7 @@
 package com.distributedstuff.services.api
 
 import com.distributedstuff.services.common.IdGenerator
+import com.google.common.base.Preconditions
 import play.api.libs.json.{Format, Json}
 
 /**
@@ -20,6 +21,11 @@ case class Service(
                     metadata: Map[String, String] = Map[String, String](),
                     roles: Seq[String] = Seq(),
                     version: Option[String] = None) {
+
+  Preconditions.checkNotNull(uid)
+  Preconditions.checkNotNull(name)
+  Preconditions.checkNotNull(url)
+
   override def equals(p1: scala.Any): Boolean = {
     p1 match {
       case s: Service => s.uid != null && s.uid == this.uid
