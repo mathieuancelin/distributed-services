@@ -92,11 +92,11 @@ class ClientUsageSpec extends Specification with Tags {
 
 
     "Register some services" in {
-      Thread.sleep(10000)
-      serviceNode1.registerService(service1)
-      serviceNode2.registerService(service2)
-      serviceNode3.registerService(service3)
       Thread.sleep(2000)
+      serviceNode1.registerService(service1)
+      serviceNode1.registerService(service2)
+      serviceNode1.registerService(service3)
+      Thread.sleep(10000)
       success
     }
 

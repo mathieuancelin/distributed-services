@@ -3,7 +3,7 @@ package com.distributedstuff.services.internal
 import java.util.concurrent.atomic.AtomicLong
 
 import com.distributedstuff.services.api.{Client, Service}
-import com.distributedstuff.services.clients.command.Command
+import com.distributedstuff.services.clients.command.{CommandContext, Command}
 import com.distributedstuff.services.common.Backoff
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -13,6 +13,7 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
 
   private[this] val counter = new AtomicLong(0L)
   private[this] val useCommands = is.configuration.getBoolean("services.commands").getOrElse(false)
+  private[this] val commandContext = CommandContext.of(Int.MaxValue)
 
   def bestService: Option[Service] = {
     val services = is.services(name, roles, version)
@@ -26,13 +27,26 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
 
   override def call[T](f: (Service) => T)(implicit ec: ExecutionContext): Future[T] = {
     implicit val sched = is.system.scheduler
-    //if (useCommands) {
-    //
-    //} else {
+    if (useCommands) {
+      is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
+      val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+      bestService.map { s =>
+        val command = new LoadBalancedClientCommand[T](times, s, f)
+        commandContext.execute(command)
+      }.getOrElse(Future.failed(new NoSuchElementException)).andThen {
+        case Success(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.success").mark()
+        }
+        case Failure(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
+        }
+      }
+    } else {
       Backoff.retry(times) {
         is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
         val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
-        // TODO : replace `f` call with a command based on service query
         bestService.map(s => Future.successful(f(s))).getOrElse(Future.failed(new NoSuchElementException)).andThen {
           case Success(_) => {
             ctx.close()
@@ -44,18 +58,31 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
           }
         }
       }
-    //}
+    }
   }
 
   override def callM[T](f: (Service) => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     implicit val sched = is.system.scheduler
-    //if (useCommands) {
-    //
-    //} else {
+    if (useCommands) {
+      is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
+      val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+      bestService.map { s =>
+        val command = new LoadBalancedClientCommandM[T](times, s, f)
+        commandContext.execute(command)
+      }.getOrElse(Future.failed(new NoSuchElementException)).andThen {
+        case Success(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.success").mark()
+        }
+        case Failure(_) => {
+          ctx.close()
+          is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
+        }
+      }
+    } else {
       Backoff.retry(times) {
         is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
         val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
-        // TODO : replace `f` call with a command based on service query
         bestService.map(s => f(s)).getOrElse(Future.failed(new NoSuchElementException)).andThen {
           case Success(_) => {
             ctx.close()
@@ -67,17 +94,18 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
           }
         }
       }
-    //}
+    }
   }
 }
 
-private class LoadBalancedClientCommand[T](backoff: Boolean, r: Int, f: (Service) => T) extends Command[T] {
-
-  override def runAsync(implicit ec: ExecutionContext): Future[T] = {
-    Future.failed(new RuntimeException)
-  }
-
+private class LoadBalancedClientCommand[T](r: Int, s: Service, f: (Service) => T) extends Command[T] {
+  override def runAsync(implicit ec: ExecutionContext): Future[T] = Future.fromTry(Try(f(s)))
   override def retry: Int = r
+  override def exponentialBackoff: Boolean = true
+}
 
-  override def exponentialBackoff: Boolean = backoff
+private class LoadBalancedClientCommandM[T](r: Int, s: Service, f: (Service) => Future[T]) extends Command[T] {
+  override def runAsync(implicit ec: ExecutionContext): Future[T] = f(s)
+  override def retry: Int = r
+  override def exponentialBackoff: Boolean = true
 }

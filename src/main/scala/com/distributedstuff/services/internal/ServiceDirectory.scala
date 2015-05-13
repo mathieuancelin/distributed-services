@@ -7,14 +7,13 @@ import akka.cluster.Cluster
 import akka.contrib.datareplication.{DataReplication, LWWMap, ORSet}
 import akka.pattern.ask
 import akka.util.Timeout
-import com.codahale.metrics.{JmxReporter, MetricRegistry}
+import com.codahale.metrics._
 import com.distributedstuff.services.api._
-import com.distributedstuff.services.clients.command.CommandContext
 import com.distributedstuff.services.common.{Configuration, IdGenerator, Logger}
 import com.distributedstuff.services.internal.ReplicatedCache._
 import com.typesafe.config.{ConfigFactory, ConfigObject}
 import org.joda.time.DateTime
-import play.api.libs.json.{JsArray, JsString, Json}
+import play.api.libs.json._
 
 import scala.concurrent.{Await, Future}
 
@@ -47,7 +46,6 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   val replicatedCache = system.actorOf(ReplicatedCache.props)
   var metrics = m.getOrElse(new MetricRegistry)
   var jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
-  val commandContext = CommandContext.of(Int.MaxValue)
 
   if (configuration.getString("services.http.host").isDefined) {
     val host = configuration.getString("services.http.host").getOrElse("127.0.0.1")
@@ -156,6 +154,45 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
     }
   }
 
+  private[this] val metricWriter = new Writes[Metric] {
+    override def writes(o: Metric): JsValue = o match {
+      case t: Timer => Json.obj(
+        "count" -> t.getCount,
+        "getFifteenMinuteRate" -> t.getFifteenMinuteRate,
+        "getFiveMinuteRate" -> t.getFiveMinuteRate,
+        "getMeanRate" -> t.getMeanRate,
+        "getOneMinuteRate" -> t.getOneMinuteRate,
+        "get75thPercentile" -> t.getSnapshot.get75thPercentile(),
+        "get95thPercentile" -> t.getSnapshot.get95thPercentile(),
+        "get98thPercentile" -> t.getSnapshot.get98thPercentile(),
+        "get99thPercentile" -> t.getSnapshot.get99thPercentile(),
+        "get999thPercentile" -> t.getSnapshot.get999thPercentile(),
+        "getMax" -> t.getSnapshot.getMax,
+        "getMean" -> t.getSnapshot.getMean,
+        "getMedian" -> t.getSnapshot.getMedian,
+        "getMin" -> t.getSnapshot.getMin,
+        "getStdDev" -> t.getSnapshot.getStdDev
+      )
+      case m: Meter => Json.obj(
+        "count" -> m.getCount,
+        "getFifteenMinuteRate" -> m.getFifteenMinuteRate,
+        "getFiveMinuteRate" -> m.getFiveMinuteRate,
+        "getMeanRate" -> m.getMeanRate,
+        "getOneMinuteRate" -> m.getOneMinuteRate
+      )
+      case _ => Json.obj()
+    }
+  }
+
+  private[this] def toMetricsJson(): JsArray = {
+    import collection.JavaConversions._
+    Json.arr(metrics.getMetrics.map {
+      case (key, value) => metricWriter.writes(value).as[JsObject] ++ Json.obj("name" -> key)
+    })
+  }
+
+  override def getMetrics: JsArray = toMetricsJson()
+
   override def printState(): Unit = stateAsString().map(println)
 
   override def registerServiceListener(listener: ActorRef): Registration = {
@@ -184,7 +221,6 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
 object ReplicatedCache {
 
   def props: Props = Props[ReplicatedCache]
-
 
   private final case class FetchKeys()  // to trigger fetching of all the known services keys
   final case class GetKeys()                            // public API to get all known keys

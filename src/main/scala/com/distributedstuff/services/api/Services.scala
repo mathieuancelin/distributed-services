@@ -7,6 +7,7 @@ import akka.actor.{ActorRef, ActorSystem}
 import com.codahale.metrics.MetricRegistry
 import com.distributedstuff.services.common.{Configuration, IdGenerator, Logger, Network}
 import com.distributedstuff.services.internal.ServiceDirectory
+import play.api.libs.json.JsArray
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
@@ -207,4 +208,6 @@ trait ServicesApi {
   def actors(): ActorSystem
 
   def useMetrics(metrics: MetricRegistry): ServicesApi
+
+  def getMetrics: JsArray
 }
