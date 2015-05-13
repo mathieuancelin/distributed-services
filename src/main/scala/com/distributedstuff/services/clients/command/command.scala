@@ -33,7 +33,7 @@ trait Command[T] {
 }
 
 object CommandContext {
-  def of(n: Int): CommandContext = new CommandContext(ActorSystem("AutoSystem", ConfigFactory.empty()), n, CircuitBreaker.Strategies.UNIQUE_PER_COMMAND, None, None)
+  def of(n: Int): CommandContext = new CommandContext(ActorSystem("AutoSystem", ConfigFactory.load().atKey("commands")), n, CircuitBreaker.Strategies.UNIQUE_PER_COMMAND, None, None)
 }
 
 class CommandContext(context: ActorSystem, allowedThreads: Int, strategy: CircuitBreaker.Strategy, cache: Option[CommandCache], collapser: Option[CommandConflater]) {

@@ -26,19 +26,20 @@ class BasicUsageSpec extends Specification with Tags {
 
     "Register some services" in {
       println("Register some services")
-      Thread.sleep(10000) // Waiting for proper cluster joining
+      Thread.sleep(5000) // Waiting for proper cluster joining
       reg1 = serviceNode1.registerService(service1)
       reg2 = serviceNode2.registerService(service2)
       reg3 = serviceNode3.registerService(service3)
+      Thread.sleep(5000) // Waiting for proper cluster joining
       success
     }
 
     "Check if services are registered" in {
       println("Check if services are registered")
-      Thread.sleep(2000) // waiting for node sync
-      serviceNode1.allServices().size shouldEqual 3
+      Thread.sleep(5000) // waiting for node sync
       serviceNode2.allServices().size shouldEqual 3
       serviceNode3.allServices().size shouldEqual 3
+      serviceNode1.allServices().size shouldEqual 3
       success
     }
 

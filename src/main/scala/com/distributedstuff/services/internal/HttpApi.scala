@@ -42,7 +42,8 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
   val logger = Logger("HttpApi")
   val httpExecutor = Executors.newFixedThreadPool(4)
 
-  val reaperDuration = Duration(sd.configuration.getInt("services.heartbeat.reaper.every").getOrElse(1800000), TimeUnit.MILLISECONDS)
+  val reaperDuration = Duration(sd.configuration.getInt("services.heartbeat.reaper.every").getOrElse(120000), TimeUnit.MILLISECONDS)
+  val heartbeatDuration = Duration(sd.configuration.getInt("services.heartbeat.every").getOrElse(1800000), TimeUnit.MILLISECONDS)
 
   var server: HttpServer = _
   var leader = false
@@ -153,11 +154,11 @@ class HttpApi(host: String, port: Int, sd: ServiceDirectory) extends Actor {
     case RegisterRequest(service) => {
       val uuid = service.uid
       sd.registerService(service)
-      sd.replicatedCache ! RegisterServiceDescriptorExpiration(uuid, HttpRegistration(uuid, service.name, System.currentTimeMillis() + reaperDuration.toMillis))
+      sd.replicatedCache ! RegisterServiceDescriptorExpiration(uuid, HttpRegistration(uuid, service.name, System.currentTimeMillis() + heartbeatDuration.toMillis))
       sender() ! Response(200, Json.obj("regId" -> uuid))
     }
     case Heartbeat(uuid) => {
-      val time = System.currentTimeMillis() + reaperDuration.toMillis
+      val time = System.currentTimeMillis() + heartbeatDuration.toMillis
       sd.replicatedCache ! UpdateServiceDescriptorExpiration(uuid, HttpRegistration(uuid, "fuuuuu", time))
       sender() ! Response(200, Json.obj("regId" -> uuid, "until" -> time))
     }

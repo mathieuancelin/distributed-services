@@ -103,6 +103,7 @@ class HttpApiUsageSpec extends Specification with Tags {
       println("Remove the service")
       val response = Await.result(Http.url(s"http://localhost:9999/services?regId=$uuid").delete(), infinity)
       val json = Json.parse(response.body().string())
+      Thread.sleep(3000)
       success
     }
 

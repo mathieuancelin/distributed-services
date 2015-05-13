@@ -115,13 +115,13 @@ class ClientUsageSpec extends Specification with Tags {
       counter2.get() should be_>(0)
       counter3.get() should be_>(0)
 
-      counter1.get() should be_>(900)
-      counter2.get() should be_>(900)
-      counter3.get() should be_>(900)
+      counter1.get() should be_>(700)
+      counter2.get() should be_>(700)
+      counter3.get() should be_>(700)
 
-      counter1.get() should be_<(1100)
-      counter2.get() should be_<(1100)
-      counter3.get() should be_<(1100)
+      counter1.get() should be_<(1300)
+      counter2.get() should be_<(1300)
+      counter3.get() should be_<(1300)
       success
     }
 
@@ -147,13 +147,13 @@ class ClientUsageSpec extends Specification with Tags {
       counter2.get() should be_>(0)
       counter3.get() should be_>(0)
 
-      counter1.get() should be_>(900)
-      counter2.get() should be_>(900)
-      counter3.get() should be_>(900)
+      counter1.get() should be_>(700)
+      counter2.get() should be_>(700)
+      counter3.get() should be_>(700)
 
-      counter1.get() should be_<(1100)
-      counter2.get() should be_<(1100)
-      counter3.get() should be_<(1100)
+      counter1.get() should be_<(1300)
+      counter2.get() should be_<(1300)
+      counter3.get() should be_<(1300)
       success
     }
 

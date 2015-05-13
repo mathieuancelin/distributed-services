@@ -9,6 +9,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, MetricRegistry}
 import com.distributedstuff.services.api._
+import com.distributedstuff.services.clients.command.CommandContext
 import com.distributedstuff.services.common.{Configuration, IdGenerator, Logger}
 import com.distributedstuff.services.internal.ReplicatedCache._
 import com.typesafe.config.{ConfigFactory, ConfigObject}
@@ -46,6 +47,7 @@ private[services] class ServiceDirectory(val name: String, val configuration: Co
   val replicatedCache = system.actorOf(ReplicatedCache.props)
   var metrics = m.getOrElse(new MetricRegistry)
   var jmxRegistry = JmxReporter.forRegistry(metrics).inDomain(ServiceDirectory.systemName).build()
+  val commandContext = CommandContext.of(Int.MaxValue)
 
   if (configuration.getString("services.http.host").isDefined) {
     val host = configuration.getString("services.http.host").getOrElse("127.0.0.1")
