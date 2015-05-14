@@ -28,21 +28,7 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
   override def call[T](f: (Service) => T)(implicit ec: ExecutionContext): Future[T] = {
     implicit val sched = is.system.scheduler
     if (useCommands) {
-      is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
-      val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
-      bestService.map { s =>
-        val command = new LoadBalancedClientCommand[T](times, s, f)
-        commandContext.execute(command)
-      }.getOrElse(Future.failed(new NoSuchElementException)).andThen {
-        case Success(_) => {
-          ctx.close()
-          is.metrics.meter(s"${is.name}.client.${name}.success").mark()
-        }
-        case Failure(_) => {
-          ctx.close()
-          is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
-        }
-      }
+      commandContext.execute(LoadBalancedClientCommand.toAsync(name, roles, version, times, counter, is, f))
     } else {
       Backoff.retry(times) {
         is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
@@ -64,21 +50,7 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
   override def callM[T](f: (Service) => Future[T])(implicit ec: ExecutionContext): Future[T] = {
     implicit val sched = is.system.scheduler
     if (useCommands) {
-      is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
-      val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
-      bestService.map { s =>
-        val command = new LoadBalancedClientCommandM[T](times, s, f)
-        commandContext.execute(command)
-      }.getOrElse(Future.failed(new NoSuchElementException)).andThen {
-        case Success(_) => {
-          ctx.close()
-          is.metrics.meter(s"${is.name}.client.${name}.success").mark()
-        }
-        case Failure(_) => {
-          ctx.close()
-          is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
-        }
-      }
+      commandContext.execute(LoadBalancedClientCommand(name, roles, version, times, counter, is, f))
     } else {
       Backoff.retry(times) {
         is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
@@ -98,14 +70,41 @@ private[services] class LoadBalancedClient(name: String, roles: Seq[String] = Se
   }
 }
 
-private class LoadBalancedClientCommand[T](r: Int, s: Service, f: (Service) => T) extends Command[T] {
-  override def runAsync(implicit ec: ExecutionContext): Future[T] = Future.fromTry(Try(f(s)))
-  override def retry: Int = r
-  override def exponentialBackoff: Boolean = true
+private object LoadBalancedClientCommand {
+  def toAsync[T](name: String, roles: Seq[String] = Seq(), version: Option[String] = None, times: Int, counter: AtomicLong, is: ServiceDirectory, f: (Service) => T) =
+    new LoadBalancedClientCommand[T](name, roles, version, times, counter, is, (service: Service) => Future.fromTry(Try(f(service))))
+  def apply[T](name: String, roles: Seq[String] = Seq(), version: Option[String] = None, times: Int, counter: AtomicLong, is: ServiceDirectory, f: (Service) => Future[T]) =
+    new LoadBalancedClientCommand[T](name, roles, version, times, counter, is, f)
 }
 
-private class LoadBalancedClientCommandM[T](r: Int, s: Service, f: (Service) => Future[T]) extends Command[T] {
-  override def runAsync(implicit ec: ExecutionContext): Future[T] = f(s)
-  override def retry: Int = r
+private class LoadBalancedClientCommand[T](name: String, roles: Seq[String] = Seq(), version: Option[String] = None, times: Int, counter: AtomicLong, is: ServiceDirectory, f: (Service) => Future[T]) extends Command[T] {
+
+  def bestService: Option[Service] = {
+    val services = is.services(name, roles, version)
+    if (services.isEmpty) None
+    else {
+      val size = services.size
+      val idx = (counter.getAndIncrement % (if (size > 0) size else 1)).toInt
+      Some(services.toList(idx))
+    }
+  }
+
+  override def runAsync(implicit ec: ExecutionContext): Future[T] = {
+    is.metrics.meter(s"${is.name}.client.${name}.mark").mark()
+    val ctx = is.metrics.timer(s"${is.name}.client.${name}.timer").time()
+    bestService.map { s =>
+      f(s)
+    }.getOrElse(Future.failed(new NoSuchElementException)).andThen {
+      case Success(_) => {
+        ctx.close()
+        is.metrics.meter(s"${is.name}.client.${name}.success").mark()
+      }
+      case Failure(_) => {
+        ctx.close()
+        is.metrics.meter(s"${is.name}.client.${name}.failure").mark()
+      }
+    }
+  }
+  override def retry: Int = times
   override def exponentialBackoff: Boolean = true
 }
