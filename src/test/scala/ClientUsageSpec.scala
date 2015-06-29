@@ -6,7 +6,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 import com.distributedstuff.services.api.{Service, Services, ServicesApi}
 import com.distributedstuff.services.common.http.Http
 import com.distributedstuff.services.common.http.support._
-import com.distributedstuff.services.common.{IdGenerator, Reference}
+import com.distributedstuff.services.common.{Network, IdGenerator, Reference}
 import com.ning.http.client.{AsyncCompletionHandler, AsyncHttpClient, AsyncHttpClientConfig, Response}
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.specs2.mutable.{Specification, Tags}
@@ -21,11 +21,9 @@ class ClientUsageSpec extends Specification with Tags {
   implicit val ec = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   private[this] val config: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder()
-    .setAllowPoolingConnection(true)
-    .setCompressionEnabled(true)
-    .setRequestTimeoutInMs(60000)
-    .setIdleConnectionInPoolTimeoutInMs(60000)
-    .setIdleConnectionTimeoutInMs(60000)
+    .setAllowPoolingConnections(true)
+    .setCompressionEnforced(true)
+    .setRequestTimeout(60000)
     .build()
 
   private[this] val httpClient: AsyncHttpClient = new AsyncHttpClient(config)
@@ -74,21 +72,26 @@ class ClientUsageSpec extends Specification with Tags {
 
   "Service API" should {
 
-    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7777)
-    val serviceNode2 = Services("node2").start().join("127.0.0.1:7777")
-    val serviceNode3 = Services("node3").start().join("127.0.0.1:7777")
+    val port = Network.freePort
+    val port1 = Network.freePort
+    val port2 = Network.freePort
+    val port3 = Network.freePort
 
-    val service1 = Service(name = "SERVICE1", url = "http://localhost:9000/service1")
-    val service2 = Service(name = "SERVICE1", url = "http://localhost:9001/service1")
-    val service3 = Service(name = "SERVICE1", url = "http://localhost:9002/service1")
+    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", port)
+    val serviceNode2 = Services("node2").start().join(s"127.0.0.1:$port")
+    val serviceNode3 = Services("node3").start().join(s"127.0.0.1:$port")
+
+    val service1 = Service(name = "SERVICE1", url = s"http://localhost:$port1/service1")
+    val service2 = Service(name = "SERVICE1", url = s"http://localhost:$port2/service1")
+    val service3 = Service(name = "SERVICE1", url = s"http://localhost:$port3/service1")
 
     val counter1 = new AtomicInteger(0)
     val counter2 = new AtomicInteger(0)
     val counter3 = new AtomicInteger(0)
 
-    val server1 = Reference[HttpServer](createWebserver(9000, counter1))
-    val server2 = Reference[HttpServer](createWebserver(9001, counter2))
-    val server3 = Reference[HttpServer](createWebserver(9002, counter3))
+    val server1 = Reference[HttpServer](createWebserver(port1, counter1))
+    val server2 = Reference[HttpServer](createWebserver(port2, counter2))
+    val server3 = Reference[HttpServer](createWebserver(port3, counter3))
 
 
     "Register some services" in {

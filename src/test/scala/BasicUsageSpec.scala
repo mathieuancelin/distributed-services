@@ -13,9 +13,9 @@ class BasicUsageSpec extends Specification with Tags {
 
   "Service API" should {
 
-    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7777)
-    val serviceNode2 = Services("node2").start().join("127.0.0.1:7777")
-    val serviceNode3 = Services("node3").start().join("127.0.0.1:7777")
+    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7778)
+    val serviceNode2 = Services("node2").start().join("127.0.0.1:7778")
+    val serviceNode3 = Services("node3").start().join("127.0.0.1:7778")
     var reg1: Registration = null
     var reg2: Registration = null
     var reg3: Registration = null

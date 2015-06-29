@@ -4,7 +4,8 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor._
 import akka.cluster.Cluster
-import akka.contrib.datareplication.{DataReplication, LWWMap, ORSet}
+import akka.cluster.ddata._
+import akka.cluster.ddata.Replicator._
 import akka.pattern.ask
 import akka.util.Timeout
 import com.codahale.metrics._
@@ -15,6 +16,7 @@ import com.typesafe.config.{ConfigFactory, ConfigObject}
 import org.joda.time.DateTime
 import play.api.libs.json._
 
+import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
 private[services] object ServiceDirectory {
@@ -226,10 +228,10 @@ object ReplicatedCache {
   final case class GetKeys()                            // public API to get all known keys
   final case class Keys(keys: Set[String])
 
-  private final case class ServiceDescriptorRequest(key: String, replyTo: ActorRef)
+  private final case class ServiceDescriptorRequest(key: ORSetKey[String], replyTo: ActorRef)
   final case class StoreServiceDescriptor(value: Service)
   final case class GetServiceDescriptors(name: String)
-  final case class ServiceDescriptors(key: String, value: Option[Set[Service]])
+  final case class ServiceDescriptors(key: ORSetKey[String], value: Option[Set[Service]])
   final case class RemoveServiceDescriptor(service: Service)
 
   private final case class ServicesRegistrationRequest(replyTo: ActorRef)
@@ -245,20 +247,18 @@ object ReplicatedCache {
 
 class ReplicatedCache() extends Actor {
 
-  import akka.contrib.datareplication.Replicator._
-
-  implicit val askTimeout = Timeout(10, TimeUnit.SECONDS)
+  val majorityTimeout = Duration(1, TimeUnit.SECONDS)
   implicit val ec = context.system.dispatcher
   implicit val cluster = Cluster(context.system)
 
-  val replicator = DataReplication(context.system).replicator
-  val KeysDataKey = "service-keys"
-  val ExpirationDataKey = "service-expirations"
+  val replicator = DistributedData(context.system).replicator
+  val KeysDataKey = ORSetKey[String]("service-keys")
+  val ExpirationDataKey = LWWMapKey[HttpRegistration]("service-expirations")
   var keys = Set.empty[String]
   var registrations = Map.empty[String, HttpRegistration]
 
-  def serviceKey(service: Service): String = "service-descriptors-" + service.name
-  def serviceKey(serviceName: String): String = "service-descriptors-" + serviceName
+  def serviceKey(service: Service): ORSetKey[Service] = ORSetKey[Service]("service-descriptors-" + service.name)
+  def serviceKey(serviceName: String): ORSetKey[Service] = ORSetKey[Service]("service-descriptors-" + serviceName)
 
   override def preStart(): Unit = {
     replicator ! Subscribe(KeysDataKey, self)
@@ -271,19 +271,27 @@ class ReplicatedCache() extends Actor {
 
     // Services names handling
     case _: FetchKeys =>
-      replicator ! Get(KeysDataKey, ReadLocal, Some(ServiceDescriptorRequest(KeysDataKey, self)))
-    case GetSuccess(KeysDataKey, data: ORSet[String]@unchecked, Some(ServiceDescriptorRequest(key, replyTo))) =>
-      keys = data.elements
+      replicator ! Get(KeysDataKey, ReadMajority(majorityTimeout), Some(ServiceDescriptorRequest(KeysDataKey, self)))
+
+    case gs@GetSuccess(KeysDataKey, Some(ServiceDescriptorRequest(key, replyTo))) =>
+      gs.dataValue match {
+        case data: ORSet[String] => keys = data.elements
+      }
+
     case _: GetKeys =>
       sender() ! Keys(keys)
-    case Changed(KeysDataKey, data: ORSet[String] @unchecked) =>
-      keys = data.elements
+
+    case changed@Changed(KeysDataKey) =>
+      changed.dataValue match {
+        case data: ORSet[String] => keys = data.elements
+      }
 
     // Services expiration handling
     case RegisterServiceDescriptorExpiration(regId, reg) =>
-      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ + (ServiceRegistration.serviceRegistrationKey(regId), reg))
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteMajority(majorityTimeout))(_ + (ServiceRegistration.serviceRegistrationKey(regId) -> reg))
+
     case UpdateServiceDescriptorExpiration(regId, reg) =>
-      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal) { map =>
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteMajority(majorityTimeout)) { map =>
         val key = ServiceRegistration.serviceRegistrationKey(regId)
         if (map.get(key).isDefined) {
           map + (key, reg)
@@ -291,15 +299,28 @@ class ReplicatedCache() extends Actor {
           map
         }
       }
+
     case RemoveServiceRegistration(regId) =>
-      replicator ! Update(ExpirationDataKey, LWWMap(), WriteLocal)(_ - ServiceRegistration.serviceRegistrationKey(regId))
-    case GetSuccess(ExpirationDataKey, data: LWWMap[HttpRegistration]@unchecked, Some(ServicesRegistrationRequest(replyTo))) =>
-      registrations = data.entries
-      replyTo ! ServiceRegistrations(registrations)
-    case Changed(ExpirationDataKey, data: LWWMap[HttpRegistration] @unchecked) =>
-      registrations = data.entries
+      replicator ! Update(ExpirationDataKey, LWWMap(), WriteMajority(majorityTimeout))(_ - ServiceRegistration.serviceRegistrationKey(regId))
+
+    case gs@GetSuccess(ExpirationDataKey, Some(ServicesRegistrationRequest(replyTo))) =>
+      gs.dataValue match {
+        case data: LWWMap[HttpRegistration] => {
+          registrations = data.entries
+          replyTo ! ServiceRegistrations(registrations)
+        }
+      }
+
+    case changed@Changed(ExpirationDataKey) =>
+      changed.dataValue match {
+        case data: LWWMap[HttpRegistration] => {
+          registrations = data.entries
+        }
+      }
+
     case _: FetchRegistrations =>
-      replicator ! Get(ExpirationDataKey, ReadLocal, Some(ServicesRegistrationRequest(self)))
+      replicator ! Get(ExpirationDataKey, ReadMajority(majorityTimeout), Some(ServicesRegistrationRequest(self)))
+
     case _: GetServiceRegistrations =>
       sender() ! ServiceRegistrations(registrations)
 
@@ -307,18 +328,27 @@ class ReplicatedCache() extends Actor {
     case StoreServiceDescriptor(service) =>
       val key = service.name
       if (!keys(key)) keys = keys + key
-      replicator ! Update(KeysDataKey, ORSet(), WriteLocal)(_ + key)
-      replicator ! Update(serviceKey(service), ORSet(), WriteLocal)(_ + service)
+      replicator ! Update(KeysDataKey, ORSet(), WriteMajority(majorityTimeout))(_ + key)
+      replicator ! Update(serviceKey(service), ORSet(), WriteMajority(majorityTimeout))(_ + service)
+
     case RemoveServiceDescriptor(service) =>
-      replicator ! Update(serviceKey(service), ORSet(), WriteLocal)(_ - service)
-      replicator ! Update(KeysDataKey, ORSet(), WriteLocal)(_ - service.name)
+      replicator ! Update(serviceKey(service), ORSet(), WriteMajority(majorityTimeout))(_ - service)
+      replicator ! Update(KeysDataKey, ORSet(), WriteMajority(majorityTimeout))(_ - service.name)
       if (keys(service.name)) keys = keys - service.name
+
     case GetServiceDescriptors(key) =>
-      replicator ! Get(serviceKey(key), ReadLocal, Some(ServiceDescriptorRequest(key, sender())))
-    case GetSuccess(_, data: ORSet[Service]@unchecked, Some(ServiceDescriptorRequest(key, replyTo))) =>
-      replyTo ! ServiceDescriptors(key, Some(data.elements))
+      replicator ! Get(serviceKey(key), ReadMajority(majorityTimeout), Some(ServiceDescriptorRequest(ORSetKey(key), sender())))
+
+    case gs@GetSuccess(_, Some(ServiceDescriptorRequest(key, replyTo))) =>
+      gs.dataValue match {
+        case data: ORSet[Service] => {
+          replyTo ! ServiceDescriptors(key, Some(data.elements))
+        }
+      }
+
     case NotFound(_, Some(ServiceDescriptorRequest(key, replyTo))) =>
       replyTo ! ServiceDescriptors(key, None)
-    case ur: UpdateResponse => // ok
+
+    case _ => // ok
   }
 }

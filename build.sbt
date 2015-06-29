@@ -9,25 +9,23 @@ version := "1.0-SNAPSHOT"
 
 scalaVersion := "2.11.6"
 
-resolvers += "patriknw at bintray" at "http://dl.bintray.com/patriknw/maven"
+libraryDependencies += "com.typesafe.akka"         %% "akka-distributed-data-experimental" % "2.4-M2"
 
-libraryDependencies += "com.github.patriknw"       %% "akka-data-replication"             % "0.11"
+libraryDependencies += "com.typesafe.play"         %% "play-json"                          % "2.4.1"
 
-libraryDependencies += "com.typesafe.play"         %% "play-json"                         % "2.3.9"
+libraryDependencies += "com.google.guava"          % "guava"                               % "18.0"
 
-libraryDependencies += "com.google.guava"          % "guava"                              % "18.0"
+libraryDependencies += "ch.qos.logback"            % "logback-classic"                     % "1.1.3"
 
-libraryDependencies += "ch.qos.logback"            % "logback-classic"                    % "1.1.3"
+libraryDependencies += "com.typesafe"              % "config"                              % "1.3.0"
 
-libraryDependencies += "com.typesafe"              % "config"                             % "1.3.0"
+libraryDependencies += "io.dropwizard.metrics"     % "metrics-core"                        % "3.1.2"
 
-libraryDependencies += "io.dropwizard.metrics"     % "metrics-core"                       % "3.1.2"
+libraryDependencies += "com.squareup.okhttp"       % "okhttp"                              % "2.4.0"
 
-libraryDependencies += "com.squareup.okhttp"       % "okhttp"                             % "2.3.0"
+libraryDependencies += "com.ning"                  % "async-http-client"                   % "1.9.29"            % "test"
 
-libraryDependencies += "com.ning"                  % "async-http-client"                  % "1.8.8"             % "test"
-
-libraryDependencies += "org.specs2"                %% "specs2"                            % "2.3.12"            % "test"
+libraryDependencies += "org.specs2"                %% "specs2"                             % "2.3.12"            % "test"
 
 jarName in assembly := "distributed-services.jar"
 

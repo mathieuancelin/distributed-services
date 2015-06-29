@@ -13,7 +13,7 @@ class FilteringUsageSpec extends Specification with Tags {
 
   "Service API" should {
 
-    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7777)
+    val serviceNode1 = Services("node1").startAndJoin("127.0.0.1", 7770)
 
     val service100     = Service(name = "SERVICE1", url = "http://monservice:9000/servicev1.0.0")
     val service100r4   = Service(name = "SERVICE1", url = "http://monservice:9000/servicev1.0.0", roles = Seq("ROLE4"))
